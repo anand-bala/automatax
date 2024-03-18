@@ -1,0 +1,50 @@
+site_name: "Matrix Semirings in JAX"
+
+theme:
+  name: "material"
+
+strict: true # Don't allow warnings during the build process
+
+
+markdown_extensions:
+  - pymdownx.arithmatex: # Render LaTeX via MathJax
+      generic: true
+  - pymdownx.superfences # Seems to enable syntax highlighting when used with the Material theme.
+  - pymdownx.details # Allowing hidden expandable regions denoted by ???
+  - pymdownx.snippets: # Include one Markdown file into another
+      base_path: docs
+  - admonition
+  - toc:
+      permalink: "¤" # Adds a clickable permalink to each section heading
+      toc_depth: 4
+
+plugins:
+  - search # default search plugin; needs manually re-enabling when using any other plugins
+  - autorefs # Cross-links to headings
+  - mkdocstrings:
+      handlers:
+        python:
+          setup_commands:
+            - import pytkdocs_tweaks
+            - pytkdocs_tweaks.main()
+            - import jaxtyping
+            - jaxtyping.set_array_name_format("array")
+            - import jax
+            - jax.ShapeDtypeStruct.__module__ = "jax"
+            - jax.core.ClosedJaxpr.__module__ = "jax.core"
+
+          selection:
+            inherited_members: true # Allow looking up inherited methods
+          rendering:
+            show_root_heading: true # actually display anything at all...
+            show_root_full_path: true # display "diffrax.asdf" not just "asdf"
+            show_if_no_docstring: true
+            show_signature_annotations: true
+            show_source: false # don't include source code
+            members_order: source # order methods according to their order of definition in the source code, not alphabetical order
+            heading_level: 4
+
+
+nav:
+  - Overview: "index.md"
+  - "api.md"

@@ -1,0 +1,59 @@
+[project]
+name = "matrix-semiring"
+version = "0.1.0"
+description = "JAX implementation for abstract linear algebra"
+authors = ["Anand Balakrishnan <anandbala1597@gmail.com>"]
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[tasks]
+
+[dependencies]
+jax = "~=0.4"
+jaxtyping = "~=0.2"
+numpy = "~=1.26.4"
+
+[host-dependencies]
+python = "~=3.9"
+pip = "*"
+
+[feature.docs.tasks]
+docs = "PYTHONPATH=src mkdocs build"
+serve-docs = "PYTHONPATH=src mkdocs serve"
+
+[feature.docs.build-dependencies]
+mkdocs = "*"
+mkdocstrings = "*"
+mkdocstrings-python = "*"
+mkdocs-material = "*"
+
+[feature.docs.pypi-dependencies]
+pytkdocs_tweaks = "*"
+
+[feature.lint.tasks]
+ruff = "ruff check --fix --exit-non-zero-on-fix ."
+black = "black src"
+isort = "isort src"
+mypy = "mypy src"
+
+lint = { depends_on = ["black", "isort", "ruff", "mypy"] }
+
+[feature.lint.build-dependencies]
+ruff = "*"
+black = "*"
+isort = "*"
+mypy = "*"
+
+[feature.cuda]
+channels = ["conda-forge", "nvidia"]
+system-requirements = { cuda = "11" }
+platforms = ["linux-64"]
+
+[feature.cuda.dependencies]
+cuda-nvcc = { version = "*", channel = "nvidia" }
+jaxlib = { version = "*", build = "*cuda*" }
+
+[environments]
+cuda = ["cuda"]
+docs = ["docs"]
+lint = ["lint"]

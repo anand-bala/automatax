@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+export PIXI_BETA_WARNING_OFF=true
+
+eval "$(pixi shell-hook)"
