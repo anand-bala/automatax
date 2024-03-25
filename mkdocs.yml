@@ -1,9 +1,26 @@
 site_name: "Matrix Semirings in JAX"
+site_description: The documentation for using matrix semirings in JAX.
+site_author: Anand Balakrishnan
+site_url: https://anand-bala.github.io/matrix-semiring
+
+repo_url: https://github.com/anand-bala/matrix-semiring
+repo_name: anand-bala/matrix-semiring
 
 theme:
   name: "material"
 
+edit_uri: "" # No edit button, as some of our pages are in /docs and some in /examples via symlink, so it's impossible for them all to be accurate
 strict: true # Don't allow warnings during the build process
+
+
+extra_javascript:
+  # The below three make MathJax work, see https://squidfunk.github.io/mkdocs-material/reference/mathjax/
+  - _static/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+extra_css:
+  - _static/custom_style.css
 
 
 markdown_extensions:
@@ -24,25 +41,11 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          setup_commands:
-            - import pytkdocs_tweaks
-            - pytkdocs_tweaks.main()
-            - import jaxtyping
-            - jaxtyping.set_array_name_format("array")
-            - import jax
-            - jax.ShapeDtypeStruct.__module__ = "jax"
-            - jax.core.ClosedJaxpr.__module__ = "jax.core"
-
-          selection:
-            inherited_members: true # Allow looking up inherited methods
-          rendering:
-            show_root_heading: true # actually display anything at all...
-            show_root_full_path: true # display "diffrax.asdf" not just "asdf"
-            show_if_no_docstring: true
+          options:
+            show_source: false
+            separate_signature: true
             show_signature_annotations: true
-            show_source: false # don't include source code
             members_order: source # order methods according to their order of definition in the source code, not alphabetical order
-            heading_level: 4
 
 
 nav:
