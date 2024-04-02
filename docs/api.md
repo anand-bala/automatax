@@ -1,6 +1,5 @@
 # API
 
-::: matrix_semiring
+::: automatax
 
 
-::: matrix_semiring.utils

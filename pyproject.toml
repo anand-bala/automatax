@@ -1,5 +1,5 @@
 [project]
-name = "matrix-semiring"
+name = "automatax"
 version = "0.1.0"
 requires-python = "~=3.9"
 dependencies = ["jax~=0.4", "jaxtyping~=0.2", "numpy~=1.26.4"]

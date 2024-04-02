@@ -1,10 +1,10 @@
 site_name: "Matrix Semirings in JAX"
 site_description: The documentation for using matrix semirings in JAX.
 site_author: Anand Balakrishnan
-site_url: https://anand-bala.github.io/matrix-semiring
+site_url: https://anand-bala.github.io/automatax
 
-repo_url: https://github.com/anand-bala/matrix-semiring
-repo_name: anand-bala/matrix-semiring
+repo_url: https://github.com/anand-bala/automatax
+repo_name: anand-bala/automatax
 
 theme:
   name: "material"

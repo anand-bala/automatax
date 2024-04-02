@@ -7,7 +7,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Num
 from typing_extensions import override
 
-from matrix_semiring.utils import logsumexp
+from .utils import logsumexp
 
 Axis: TypeAlias = Union[None, int, Tuple[int, ...]]
 Shape: TypeAlias = Union[int, Tuple[int, ...]]

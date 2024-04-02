@@ -1,4 +1,7 @@
-# Matrix Semirings in [JAX](https://github.com/google/jax)
+# Differentiable Automata in [JAX](https://github.com/google/jax)
 
-This project implements matrix operations and other linear algebra ideas using abstract
-semirings via [JAX](https://github.com/google/jax).
+This project implements differentiable automata in JAX.
+Specifically, it does so by defining _matrix operators_ on the automata transitions,
+which can then be interpreted over a semiring to yield various acceptance and weighted
+semantics.
+
