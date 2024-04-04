@@ -1,14 +1,3 @@
-r"""
-A tuple, $\Ke = \left(K, \oplus, \otimes, \tilde{0}, \tilde{1}\right)$ is
-a \emph{semiring} with the underlying set $K$ if
-
-1. $\left(K, \oplus, \tilde{0}\right)$ is a commutative monoid with identity $\tilde{0}$;
-2. $\left( K, \otimes, \tilde{1} \right)$ is a monoid with identity element $\tilde{1}$;
-3. $\otimes$ distributes over $\oplus$; and
-4. $\tilde{0}$ is an annihilator for $\otimes$ (for all $k \in K, k \otimes \tilde{0} =
-\tilde{0} \otimes k = \tilde{0}$).
-"""
-
 from abc import abstractmethod
 from typing import Union
 
@@ -101,7 +90,6 @@ class AbstractSemiring(eqx.Module, strict=True):
         """
         ...
 
-    @jax.jit
     @classmethod
     def vdot(cls, a: Num[Array, " n"], b: Num[Array, " n"]) -> Num[Array, ""]:
         """Computes the dot product of two 1D tensors using the semiring.
@@ -112,7 +100,6 @@ class AbstractSemiring(eqx.Module, strict=True):
         """
         return cls.sum(cls.multiply(a, b))
 
-    @jax.jit
     @classmethod
     def matmul(cls, a: Num[Array, "n k"], b: Num[Array, "k m"]) -> Num[Array, "n m"]:
         """Matrix-semiring product of two arrays."""
@@ -204,25 +191,21 @@ class LSEMaxMinSemiring(AbstractSemiring):
         return -jnp.full(shape, fill_value=-0.0)
 
     @override
-    @jax.jit
     @classmethod
     def add(cls, x1: Num[Array, " n"], x2: Num[Array, " n"]) -> Num[Array, " n"]:
         return logsumexp(jnp.stack([x1, x2], axis=-1), axis=-1)
 
     @override
-    @jax.jit
     @classmethod
     def multiply(cls, x1: Num[Array, " n"], x2: Num[Array, " n"]) -> Num[Array, " n"]:
         return -logsumexp(jnp.stack([-x1, -x2], axis=-1), axis=-1)
 
     @override
-    @jax.jit
     @classmethod
     def sum(cls, a: Num[Array, " ..."], axis: Axis = None) -> Num[Array, " ..."]:
         return logsumexp(a, axis=axis)
 
     @override
-    @jax.jit
     @classmethod
     def prod(cls, a: Num[Array, " ..."], axis: Axis = None) -> Num[Array, " ..."]:
         return -logsumexp(-a, axis=axis)
@@ -276,7 +259,6 @@ class LogSemiring(AbstractSemiring):
         return -jnp.full(shape, fill_value=-0.0)
 
     @override
-    @jax.jit
     @classmethod
     def add(cls, x1: Num[Array, " n"], x2: Num[Array, " n"]) -> Num[Array, " n"]:
         return logsumexp(jnp.stack([x1, x2], axis=-1), axis=-1)
@@ -287,7 +269,6 @@ class LogSemiring(AbstractSemiring):
         return jnp.add(x1, x2)
 
     @override
-    @jax.jit
     @classmethod
     def sum(cls, a: Num[Array, " ..."], axis: Axis = None) -> Num[Array, " ..."]:
         return logsumexp(a, axis=axis)

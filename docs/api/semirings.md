@@ -1,0 +1,1 @@
+::: automatax.semirings
