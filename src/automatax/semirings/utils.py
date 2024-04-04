@@ -1,11 +1,12 @@
 import functools
-from typing import Tuple, TypeAlias, Union
+from typing import Union
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, ArrayLike, Num
+from typing_extensions import TypeAlias
 
-_Axis: TypeAlias = Union[None, int, Tuple[int, ...]]
+_Axis: TypeAlias = Union[None, int, tuple[int, ...]]
 _ArrayLike: TypeAlias = Num[ArrayLike, "..."]
 _Array: TypeAlias = Num[Array, "..."]
 
@@ -19,7 +20,7 @@ def logsumexp(a: _ArrayLike, axis: _Axis = None) -> _Array:
     return _logsumexp_fwd(a, axis)[0]
 
 
-def _logsumexp_fwd(a: _ArrayLike, axis: _Axis) -> Tuple[_Array, Tuple[_Array, _Array]]:
+def _logsumexp_fwd(a: _ArrayLike, axis: _Axis) -> tuple[_Array, tuple[_Array, _Array]]:
     c = jnp.max(a, axis=axis, keepdims=True)
     safe = jnp.isfinite(c)
     c = jnp.where(safe, c, 0)
@@ -29,13 +30,15 @@ def _logsumexp_fwd(a: _ArrayLike, axis: _Axis) -> Tuple[_Array, Tuple[_Array, _A
     return r, (e, z)
 
 
-def _logsumexp_bwd(axis: _Axis, res: Tuple[_ArrayLike, _ArrayLike], g: _ArrayLike) -> Tuple[_Array]:
-    e, z = res
+def _logsumexp_bwd(axis: _Axis, res: tuple[_ArrayLike, _ArrayLike], g: _ArrayLike) -> tuple[_Array]:
+    e = jnp.asarray(res[0])
+    z = jnp.asarray(res[1])
+    g = jnp.asarray(g)
     safe = z != 0
     z = jnp.where(safe, z, 1)
     if axis is not None:
         g = jnp.expand_dims(g, axis=axis)
-    return (g / z * e,)  # type: ignore
+    return (g / z * e,)
 
 
 logsumexp.defvjp(_logsumexp_fwd, _logsumexp_bwd)
