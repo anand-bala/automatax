@@ -1,0 +1,4 @@
+Semirings
+=========
+
+::: automatax.semirings

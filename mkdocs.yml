@@ -8,6 +8,7 @@ repo_name: anand-bala/automatax
 
 theme:
   name: "material"
+  custom_dir: overrides
 
 edit_uri: "" # No edit button, as some of our pages are in /docs and some in /examples via symlink, so it's impossible for them all to be accurate
 strict: true # Don't allow warnings during the build process
@@ -50,4 +51,5 @@ plugins:
 
 nav:
   - Overview: "index.md"
+  - semirings.md
   - "api.md"

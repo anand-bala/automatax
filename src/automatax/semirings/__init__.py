@@ -1,3 +1,14 @@
+r"""
+A tuple, $\Ke = \left(K, \oplus, \otimes, \tilde{0}, \tilde{1}\right)$ is
+a \emph{semiring} with the underlying set $K$ if
+
+1. $\left(K, \oplus, \tilde{0}\right)$ is a commutative monoid with identity $\tilde{0}$;
+2. $\left( K, \otimes, \tilde{1} \right)$ is a monoid with identity element $\tilde{1}$;
+3. $\otimes$ distributes over $\oplus$; and
+4. $\tilde{0}$ is an annihilator for $\otimes$ (for all $k \in K, k \otimes \tilde{0} =
+\tilde{0} \otimes k = \tilde{0}$).
+"""
+
 from abc import abstractmethod
 from typing import Union
 
@@ -146,7 +157,7 @@ class CountingSemiring(AbstractSemiring):
 
 
 class MaxMinSemiring(AbstractSemiring):
-    r"""Implementation of the min-max semiring $(\mathbb{R}_{\leq 0} \cup \{-\infty\}, \max, \min, -\infty, 0)$."""
+    r"""Implementation of the min-max semiring $(\mathbb{R}_{\leq 0} \cup \{-\infty, \infty\}, \max, \min, -\infty, 0)$."""
 
     @override
     @staticmethod
@@ -180,7 +191,7 @@ class MaxMinSemiring(AbstractSemiring):
 
 
 class LSEMaxMinSemiring(AbstractSemiring):
-    r"""Implementation of the smooth min-max semiring using `logsumexp` $(\mathbb{R}_{\leq 0} \cup \{-\infty\}, logsumexp, -logsumexp, -\infty, 0)$."""
+    r"""Implementation of the smooth min-max semiring using `logsumexp` $(\mathbb{R}_{\leq 0} \cup \{-\infty, \infty\}, logsumexp, -logsumexp, -\infty, 0)$."""
 
     @override
     @staticmethod
@@ -218,7 +229,7 @@ class LSEMaxMinSemiring(AbstractSemiring):
 
 
 class MaxPlusSemiring(AbstractSemiring):
-    r"""Implementation of the max-plus tropical semiring $(\mathbb{R}_{\leq 0} \cup \{-\infty\}, \max, +, -\infty, 0)$."""
+    r"""Implementation of the max-plus tropical semiring $(\mathbb{R}_{\leq 0} \cup \{-\infty,\infty\}, \max, +, -\infty, 0)$."""
 
     @override
     @staticmethod
