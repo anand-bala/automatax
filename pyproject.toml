@@ -61,3 +61,21 @@ group_by_package = true
 
 [tool.black]
 line-length = 127
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.9"
+pythonPlatform = "All"
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+
+[tool.basedpyright]
+include = ["src"]
+pythonVersion = "3.9"
+pythonPlatform = "All"
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
