@@ -9,6 +9,7 @@ dependencies = [
   "equinox~=0.11",
   "sympy~=1.12",
   "typing-extensions",
+  "networkx~=3.2.1",
 ]
 
 [project.optional-dependencies]
