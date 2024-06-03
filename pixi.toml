@@ -27,6 +27,7 @@ black = "black src"
 isort = "isort src"
 mypy = "mypy src"
 lint = { depends_on = ["black", "isort", "ruff", "mypy"] }
+test = "pytest"
 
 [feature.dev.build-dependencies]
 mkdocs = "*"
@@ -38,6 +39,7 @@ black = "*"
 isort = "*"
 mypy = "*"
 ipython = "*"
+pytest = "*"
 
 [feature.cuda11]
 channels = ["conda-forge", "nvidia"]

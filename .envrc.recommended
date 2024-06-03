@@ -25,7 +25,7 @@ eval "$(pixi shell-hook -e "$pixi_env")"
 
 if xhost_cmd="$(type -p "xhost")" && [[ -n "$xhost_cmd" ]]; then
   "$xhost_cmd" +si:localuser:"$(whoami)" >&/dev/null && {
-    info "Display present, setting XLA_PYTHON_CLIENT_MEM_FRACTION to 33%"
-    export XLA_PYTHON_CLIENT_MEM_FRACTION=".33"
+    info "Display present, setting XLA_PYTHON_CLIENT_MEM_FRACTION to 40%"
+    export XLA_PYTHON_CLIENT_MEM_FRACTION=".40"
   }
 fi

@@ -13,7 +13,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-docs = ["pdoc"]
 test = ["pytest", "coverage"]
 
 [tool.setuptools.packages.find]
