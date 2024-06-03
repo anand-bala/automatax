@@ -6,15 +6,13 @@ authors = ["Anand Balakrishnan <anandbala1597@gmail.com>"]
 channels = ["conda-forge"]
 platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
 
-[tasks]
-
 [dependencies]
+typing-extensions = "*"
 jax = "~=0.4"
 jaxtyping = "~=0.2"
 numpy = "~=1.26.4"
 equinox = "~=0.11"
 sympy = "~=1.12"
-typing-extensions = "*"
 networkx = "~=3.2.1"
 
 [host-dependencies]
@@ -59,10 +57,19 @@ platforms = ["linux-64"]
 cuda-nvcc = { version = "*", channel = "nvidia" }
 jaxlib = { version = "*", build = "*cuda*" }
 
+[feature.examples.tasks]
+unicycle-example = "python ./examples/motion_planning/unicycle.py"
+pusher-example = "python ./examples/motion_planning/pusher.py"
+
+[feature.examples.dependencies]
+brax = "*"
+matplotlib = "*"
+scienceplots = "*"
+
 [environments]
 default = ["dev"]
-dev = ["dev"]
+dev = ["dev", "examples"]
 cuda11 = ["cuda11"]
-cuda11-dev = ["cuda11", "dev"]
+cuda11-dev = ["cuda11", "dev", "examples"]
 cuda12 = ["cuda12"]
-cuda12-dev = ["cuda12", "dev"]
+cuda12-dev = ["cuda12", "dev", "examples"]
