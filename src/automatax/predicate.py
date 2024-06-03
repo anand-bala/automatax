@@ -1,7 +1,7 @@
 from abc import abstractmethod
 
 import equinox as eqx
-from jaxtyping import Array, Num
+from jaxtyping import Array, Num, Scalar
 
 
 class Predicate(eqx.Module):
@@ -13,6 +13,6 @@ class Predicate(eqx.Module):
         ...
 
     @abstractmethod
-    def weight(self, x: Num[Array, "..."]) -> Num[Array, ""]:
+    def weight(self, x: Num[Array, "..."]) -> Scalar:
         """Scalar function that outputs the weight of an input domain vector with respect to the predicate."""
         ...

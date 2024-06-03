@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Type
 
 import equinox as eqx
 import jax
@@ -53,20 +53,19 @@ class AutomatonOperator(eqx.Module):
     cost_transitions: Callable[[Num[Array, "..."]], Num[Array, "q q"]]
 
 
-def make_automaton_operator(aut: Automaton, semiring: AbstractSemiring) -> AutomatonOperator:
+def make_automaton_operator(aut: Automaton, semiring: Type[AbstractSemiring]) -> AutomatonOperator:
 
     initial_weights = semiring.zeros(aut.num_locations).at[jnp.array(list(aut.initial_locations))].set(semiring.ones(1).item())
     final_weights = semiring.zeros(aut.num_locations).at[jnp.array(list(aut.final_locations))].set(semiring.ones(1).item())
     n_q = aut.num_locations
 
-    @jax.jit
     def cost_transitions(x: Num[Array, "..."]) -> Num[Array, " {n_q} {n_q}"]:
         src: int
         dst: int
         guard: Predicate
         matrix = semiring.zeros((n_q, n_q))
         for src, dst, guard in aut._graph.edges.data("guard"):
-            matrix.at[src, dst].set(guard.weight(x))
+            matrix = matrix.at[src, dst].set(guard.weight(x))
 
         return matrix
 

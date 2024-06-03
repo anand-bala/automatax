@@ -105,7 +105,7 @@ class AbstractSemiring(eqx.Module, strict=True):
         """Matrix-semiring product of two arrays."""
         mv = jax.vmap(cls.vdot, (0, None), 0)
         mm = jax.vmap(mv, (None, 1), 1)
-        c: Num[Array, "n m"] = mm(a, b)
+        c: Num[Array, "n m"] = jax.jit(mm)(a, b)
         return c
 
 
@@ -149,12 +149,12 @@ class MaxMinSemiring(AbstractSemiring):
     @override
     @staticmethod
     def zeros(shape: Shape) -> Num[Array, "..."]:
-        return -jnp.full(shape, fill_value=-jnp.inf)
+        return jnp.full(shape, fill_value=-jnp.inf)
 
     @override
     @staticmethod
     def ones(shape: Shape) -> Num[Array, "..."]:
-        return -jnp.full(shape, fill_value=-0.0)
+        return jnp.full(shape, fill_value=-0.0)
 
     @override
     @classmethod
@@ -183,12 +183,12 @@ class LSEMaxMinSemiring(AbstractSemiring):
     @override
     @staticmethod
     def zeros(shape: Shape) -> Num[Array, "..."]:
-        return -jnp.full(shape, fill_value=-jnp.inf)
+        return jnp.full(shape, fill_value=-jnp.inf)
 
     @override
     @staticmethod
     def ones(shape: Shape) -> Num[Array, "..."]:
-        return -jnp.full(shape, fill_value=-0.0)
+        return jnp.full(shape, fill_value=-0.0)
 
     @override
     @classmethod
@@ -217,12 +217,12 @@ class MaxPlusSemiring(AbstractSemiring):
     @override
     @staticmethod
     def zeros(shape: Shape) -> Num[Array, "..."]:
-        return -jnp.full(shape, fill_value=-jnp.inf)
+        return jnp.full(shape, fill_value=-jnp.inf)
 
     @override
     @staticmethod
     def ones(shape: Shape) -> Num[Array, "..."]:
-        return -jnp.full(shape, fill_value=-0.0)
+        return jnp.full(shape, fill_value=-0.0)
 
     @override
     @classmethod
@@ -251,12 +251,12 @@ class LogSemiring(AbstractSemiring):
     @override
     @staticmethod
     def zeros(shape: Shape) -> Num[Array, "..."]:
-        return -jnp.full(shape, fill_value=-jnp.inf)
+        return jnp.full(shape, fill_value=-jnp.inf)
 
     @override
     @staticmethod
     def ones(shape: Shape) -> Num[Array, "..."]:
-        return -jnp.full(shape, fill_value=-0.0)
+        return jnp.full(shape, fill_value=-0.0)
 
     @override
     @classmethod
