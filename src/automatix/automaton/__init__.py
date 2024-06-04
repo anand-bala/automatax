@@ -6,8 +6,8 @@ import jax.numpy as jnp
 import networkx as nx
 from jaxtyping import Array, Num
 
-from automatax.predicate import Predicate
-from automatax.semirings import AbstractSemiring
+from automatix.predicate import Predicate
+from automatix.semirings import AbstractSemiring
 
 
 class Automaton:

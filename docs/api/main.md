@@ -1,1 +1,1 @@
-::: automatax
+::: automatix

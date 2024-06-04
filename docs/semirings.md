@@ -14,8 +14,8 @@ a _semiring_ with the underlying set $K$ if
 4. $\tilde{0}$ is an annihilator for $\otimes$ (for all $k \in K, k \otimes \tilde{0}
    = \tilde{0} \otimes k = \tilde{0}$).
 
-In `automatax`, we define semirings as subclasses of the
-[`AbstractSemiring`][automatax.semirings.AbstractSemiring] class, and overriding its
+In `automatix`, we define semirings as subclasses of the
+[`AbstractSemiring`][automatix.semirings.AbstractSemiring] class, and overriding its
 `ones`, `zeros`, `add`, `mul`, `sum`, and `prod` methods, which correspond to semiring
 elements.
 

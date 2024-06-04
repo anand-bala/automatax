@@ -1,5 +1,5 @@
 [project]
-name = "automatax"
+name = "automatix"
 version = "0.1.0"
 description = "Symbolic automata using JAX"
 authors = ["Anand Balakrishnan <anandbala1597@gmail.com>"]
