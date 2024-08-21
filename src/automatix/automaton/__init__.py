@@ -1,4 +1,4 @@
-from typing import Callable, Type
+from typing import Callable, Optional, Type
 
 import equinox as eqx
 import jax
@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import networkx as nx
 from jaxtyping import Array, Num
 
-from automatix.predicate import Predicate
+from automatix.predicate import AbstractPredicate
 from automatix.semirings import AbstractSemiring
 
 
@@ -26,7 +26,7 @@ class Automaton:
             self._final_locations.add(location)
         self._graph.add_node(location, initial=initial, final=final)
 
-    def add_transition(self, src: int, dst: int, guard: Predicate) -> None:
+    def add_transition(self, src: int, dst: int, guard: AbstractPredicate) -> None:
         if (src, dst) in self._graph.edges:
             raise ValueError(f"Transition from {src} to {dst} already exists. Did you want to update the guard?")
         self._graph.add_edge(src, dst, guard=guard)
@@ -53,16 +53,29 @@ class AutomatonOperator(eqx.Module):
     cost_transitions: Callable[[Num[Array, "..."]], Num[Array, "q q"]]
 
 
-def make_automaton_operator(aut: Automaton, semiring: Type[AbstractSemiring]) -> AutomatonOperator:
-
-    initial_weights = semiring.zeros(aut.num_locations).at[jnp.array(list(aut.initial_locations))].set(semiring.ones(1).item())
-    final_weights = semiring.zeros(aut.num_locations).at[jnp.array(list(aut.final_locations))].set(semiring.ones(1).item())
+def make_automaton_operator(
+    aut: Automaton,
+    semiring: Type[AbstractSemiring],
+    *,
+    initial_weights: Optional[Num[Array, "{len(aut)}"]] = None,
+    final_weights: Optional[Num[Array, "{len(aut)}"]] = None,
+) -> AutomatonOperator:
     n_q = aut.num_locations
+
+    if initial_weights is None:
+        initial_weights = (
+            semiring.zeros(aut.num_locations).at[jnp.array(list(aut.initial_locations))].set(semiring.ones(1).item())
+        )
+    if final_weights is None:
+        final_weights = semiring.zeros(aut.num_locations).at[jnp.array(list(aut.final_locations))].set(semiring.ones(1).item())
+
+    assert initial_weights.shape == (n_q,)
+    assert final_weights.shape == (n_q,)
 
     def cost_transitions(x: Num[Array, "..."]) -> Num[Array, " {n_q} {n_q}"]:
         src: int
         dst: int
-        guard: Predicate
+        guard: AbstractPredicate
         matrix = semiring.zeros((n_q, n_q))
         for src, dst, guard in aut._graph.edges.data("guard"):
             matrix = matrix.at[src, dst].set(guard.weight(x))
