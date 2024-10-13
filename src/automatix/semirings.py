@@ -7,7 +7,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Num
 from typing_extensions import TypeAlias, override
 
-from .utils import logsumexp
+from automatix.utils.logsumexp import logsumexp
 
 Axis: TypeAlias = Union[None, int, tuple[int, ...]]
 Shape: TypeAlias = Union[int, tuple[int, ...]]

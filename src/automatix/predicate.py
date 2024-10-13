@@ -1,5 +1,4 @@
 from abc import abstractmethod
-from typing import Tuple, Type
 
 import equinox as eqx
 import jax

@@ -57,8 +57,8 @@ def make_automaton_operator(
     aut: Automaton,
     semiring: Type[AbstractSemiring],
     *,
-    initial_weights: Optional[Num[Array, "{len(aut)}"]] = None,
-    final_weights: Optional[Num[Array, "{len(aut)}"]] = None,
+    initial_weights: Optional[Num[Array, " {len(aut)}"]] = None,
+    final_weights: Optional[Num[Array, " {len(aut)}"]] = None,
 ) -> AutomatonOperator:
     n_q = aut.num_locations
 

@@ -1,3 +1,4 @@
+from functools import partialmethod
 from typing import final
 
 import equinox as eqx
@@ -6,7 +7,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Num, Scalar
 from typing_extensions import TypeAlias
 
-from automatix import Predicate
+from automatix import AbstractPredicate
 from automatix.automaton import Automaton, make_automaton_operator
 from automatix.semirings import MaxPlusSemiring
 
@@ -61,67 +62,47 @@ def test_signed_dist_to_box() -> None:
     print(dists)
 
 
+def _no_op(x):
+    return x
+
+
 @final
-class InRed(Predicate):
+class Red(AbstractPredicate):
     def is_true(self, x: Num[Array, " n"]) -> bool:
-        return jnp.all(signed_dist_box(x, RED_BOX) <= 0.0)
+        return jnp.all(signed_dist_box(x, RED_BOX) <= 0.0).item()
 
-    def weight(self, x: Num[Array, " n"]) -> Scalar:
-        return -jax.nn.relu(signed_dist_box(x, RED_BOX))
+    def weight(self, x: Num[Array, " n"], negate: bool = False) -> Scalar:
+        dist = jax.lax.cond(negate, jax.lax.neg, _no_op, signed_dist_box(x, RED_BOX))
+        return -jax.nn.relu(dist)
 
 
 @final
-class OutRed(Predicate):
+class Orange(AbstractPredicate):
     def is_true(self, x: Num[Array, " n"]) -> bool:
-        return jnp.all(signed_dist_box(x, RED_BOX) > 0.0)
+        return jnp.all(signed_dist_box(x, ORANGE_BOX) <= 0.0).item()
 
-    def weight(self, x: Num[Array, " n"]) -> Scalar:
-        return -jax.nn.relu(-signed_dist_box(x, RED_BOX))
+    def weight(self, x: Num[Array, " n"], negate: bool = False) -> Scalar:
+        dist = jax.lax.cond(negate, jax.lax.neg, _no_op, signed_dist_box(x, ORANGE_BOX))
+        return -jax.nn.relu(dist)
 
 
 @final
-class InOrange(Predicate):
+class Green(AbstractPredicate):
     def is_true(self, x: Num[Array, " n"]) -> bool:
-        return jnp.all(signed_dist_box(x, ORANGE_BOX) <= 0.0)
+        return jnp.all(signed_dist_box(x, GREEN_BOX) <= 0.0).item()
 
-    def weight(self, x: Num[Array, " n"]) -> Scalar:
-        return -jax.nn.relu(signed_dist_box(x, ORANGE_BOX))
-
-
-@final
-class OutOrange(Predicate):
-    def is_true(self, x: Num[Array, " n"]) -> bool:
-        return jnp.all(signed_dist_box(x, ORANGE_BOX) > 0.0)
-
-    def weight(self, x: Num[Array, " n"]) -> Scalar:
-        return -jax.nn.relu(-signed_dist_box(x, ORANGE_BOX))
+    def weight(self, x: Num[Array, " n"], negate: bool = False) -> Scalar:
+        dist = jax.lax.cond(negate, jax.lax.neg, _no_op, signed_dist_box(x, GREEN_BOX))
+        return -jax.nn.relu(dist)
 
 
 @final
-class InGreen(Predicate):
-    def is_true(self, x: Num[Array, " n"]) -> bool:
-        return jnp.all(signed_dist_box(x, GREEN_BOX) <= 0.0)
-
-    def weight(self, x: Num[Array, " n"]) -> Scalar:
-        return -jax.nn.relu(signed_dist_box(x, GREEN_BOX))
-
-
-@final
-class OutGreen(Predicate):
-    def is_true(self, x: Num[Array, " n"]) -> bool:
-        return jnp.all(signed_dist_box(x, GREEN_BOX) > 0.0)
-
-    def weight(self, x: Num[Array, " n"]) -> Scalar:
-        return -jax.nn.relu(-signed_dist_box(x, GREEN_BOX))
-
-
-@final
-class Tautology(Predicate):
+class Tautology(AbstractPredicate):
     def is_true(self, x: Num[Array, " n"]) -> bool:
         return True
 
-    def weight(self, x: Num[Array, " n"]) -> Scalar:
-        return jnp.array(0.0)
+    def weight(self, x: Num[Array, " n"], negate: bool = False) -> Scalar:
+        return jax.lax.select(jnp.array(negate), MaxPlusSemiring.zeros(()), MaxPlusSemiring.ones(()))
 
 
 def test_weight_fn() -> None:
