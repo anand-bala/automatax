@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from automatix.semirings import CountingSemiring
+from automatix.nfa.semirings import CountingSemiring
 
 
 @pytest.mark.parametrize(

@@ -56,5 +56,5 @@ nav:
   - Overview: "index.md"
   - Semirings: semirings.md
   - API Reference:
-      - automatix: "api/main.md"
-      - automatix.semirings: "api/semirings.md"
+      - automatix: "api/nfa/main.md"
+      - automatix.nfa.semirings: "api/nfa/semirings.md"

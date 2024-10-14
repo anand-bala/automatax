@@ -1,13 +1,12 @@
 from typing import Callable, Optional, Type
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 import networkx as nx
 from jaxtyping import Array, Num
 
-from automatix.predicate import AbstractPredicate
-from automatix.semirings import AbstractSemiring
+from automatix.nfa.predicate import AbstractPredicate
+from automatix.nfa.semirings import AbstractSemiring
 
 
 class Automaton:
@@ -26,10 +25,10 @@ class Automaton:
             self._final_locations.add(location)
         self._graph.add_node(location, initial=initial, final=final)
 
-    def add_transition(self, src: int, dst: int, guard: AbstractPredicate) -> None:
+    def add_transition(self, src: int, dst: int, guard: AbstractPredicate, *, negate: bool = False) -> None:
         if (src, dst) in self._graph.edges:
             raise ValueError(f"Transition from {src} to {dst} already exists. Did you want to update the guard?")
-        self._graph.add_edge(src, dst, guard=guard)
+        self._graph.add_edge(src, dst, guard=guard, negate=negate)
 
     @property
     def num_locations(self) -> int:
@@ -77,8 +76,10 @@ def make_automaton_operator(
         dst: int
         guard: AbstractPredicate
         matrix = semiring.zeros((n_q, n_q))
-        for src, dst, guard in aut._graph.edges.data("guard"):
-            matrix = matrix.at[src, dst].set(guard.weight(x))
+        for src, dst, data in aut._graph.edges.data():
+            guard = data["guard"]
+            negate = data["negate"]
+            matrix = matrix.at[src, dst].set(guard.weight(x, negate=negate))
 
         return matrix
 

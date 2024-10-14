@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Num, Scalar
 
-from automatix.semirings import AbstractSemiring
+from automatix.nfa.semirings import AbstractSemiring
 
 
 class AbstractPredicate(eqx.Module, strict=True):

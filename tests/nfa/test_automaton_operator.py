@@ -1,15 +1,13 @@
-from functools import partialmethod
 from typing import final
 
-import equinox as eqx
 import jax.nn
 import jax.numpy as jnp
 from jaxtyping import Array, Num, Scalar
 from typing_extensions import TypeAlias
 
-from automatix import AbstractPredicate
-from automatix.automaton import Automaton, make_automaton_operator
-from automatix.semirings import MaxPlusSemiring
+from automatix.nfa import AbstractPredicate
+from automatix.nfa.automaton import Automaton, make_automaton_operator
+from automatix.nfa.semirings import MaxPlusSemiring
 
 Box: TypeAlias = Num[Array, " 4"]
 Circle: TypeAlias = Num[Array, " 3"]
@@ -112,12 +110,16 @@ def test_weight_fn() -> None:
     sequential_aut.add_location(2)
     sequential_aut.add_location(3, final=True)
 
-    sequential_aut.add_transition(0, 0, guard=OutRed())
-    sequential_aut.add_transition(0, 1, guard=InRed())
-    sequential_aut.add_transition(1, 1, guard=OutGreen())
-    sequential_aut.add_transition(1, 2, guard=InGreen())
-    sequential_aut.add_transition(2, 2, guard=OutOrange())
-    sequential_aut.add_transition(2, 3, guard=InOrange())
+    red = Red()
+    green = Green()
+    orange = Orange()
+
+    sequential_aut.add_transition(0, 0, guard=red, negate=True)
+    sequential_aut.add_transition(0, 1, guard=red, negate=False)
+    sequential_aut.add_transition(1, 1, guard=green, negate=True)
+    sequential_aut.add_transition(1, 2, guard=green, negate=False)
+    sequential_aut.add_transition(2, 2, guard=orange, negate=True)
+    sequential_aut.add_transition(2, 3, guard=orange, negate=False)
     sequential_aut.add_transition(3, 3, guard=Tautology())
 
     operator = make_automaton_operator(sequential_aut, MaxPlusSemiring)
