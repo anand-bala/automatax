@@ -3,7 +3,7 @@ name = "automatix"
 authors = [{ name = "Anand Balakrishnan", email = "anandbala1597@gmail.com" }]
 description = "Symbolic automata using JAX"
 version = "0.1.0"
-requires-python = "~=3.9"
+requires-python = "~=3.11"
 
 dependencies = [
   "typing-extensions",
@@ -36,7 +36,6 @@ sympy = "~=1.12"
 networkx = "~=3.2"
 
 [tool.pixi.host-dependencies]
-python = "~=3.9"
 pip = "*"
 
 [tool.pixi.feature.dev.tasks]
