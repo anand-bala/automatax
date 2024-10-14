@@ -1,19 +1,19 @@
 [project]
 name = "automatix"
+authors = [{ name = "Anand Balakrishnan", email = "anandbala1597@gmail.com" }]
+description = "Symbolic automata using JAX"
 version = "0.1.0"
 requires-python = "~=3.9"
+
 dependencies = [
+  "typing-extensions",
   "jax~=0.4",
   "jaxtyping~=0.2",
-  "numpy~=1.26.4",
+  "numpy~=1.26",
   "equinox~=0.11",
   "sympy~=1.12",
-  "typing-extensions",
-  "networkx~=3.2.1",
+  "networkx~=3.2",
 ]
-
-[project.optional-dependencies]
-test = ["pytest", "coverage"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -21,6 +21,80 @@ where = ["src"]
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64"]
+
+[tool.pixi.dependencies]
+typing-extensions = "*"
+jax = "~=0.4"
+jaxtyping = "~=0.2"
+numpy = "~=1.26"
+equinox = "~=0.11"
+sympy = "~=1.12"
+networkx = "~=3.2"
+
+[tool.pixi.host-dependencies]
+python = "~=3.9"
+pip = "*"
+
+[tool.pixi.feature.dev.tasks]
+docs = "PYTHONPATH=src mkdocs build"
+serve-docs = "PYTHONPATH=src mkdocs serve"
+ruff = "ruff check --fix --exit-non-zero-on-fix ."
+black = "black src"
+isort = "isort src"
+mypy = "mypy src"
+lint = { depends_on = ["black", "isort", "ruff", "mypy"] }
+test = "pytest"
+
+[tool.pixi.feature.dev.build-dependencies]
+mkdocs = "*"
+mkdocstrings = "*"
+mkdocstrings-python = "*"
+mkdocs-material = "*"
+ruff = ">=0.5.3"
+black = "*"
+isort = "*"
+mypy = "*"
+ipython = "*"
+pytest = "*"
+
+[tool.pixi.feature.cuda11]
+channels = ["conda-forge", "nvidia"]
+system-requirements = { cuda = "11" }
+platforms = ["linux-64"]
+
+[tool.pixi.feature.cuda11.dependencies]
+cuda-nvcc = { version = "*", channel = "nvidia" }
+jaxlib = { version = "*", build = "*cuda*" }
+
+[tool.pixi.feature.cuda12]
+channels = ["conda-forge", "nvidia"]
+system-requirements = { cuda = "12" }
+platforms = ["linux-64"]
+
+[tool.pixi.feature.cuda12.dependencies]
+cuda-nvcc = { version = "*", channel = "nvidia" }
+jaxlib = { version = "*", build = "*cuda*" }
+
+[tool.pixi.feature.examples.tasks]
+unicycle-example = "python ./examples/motion_planning/unicycle.py"
+pusher-example = "python ./examples/motion_planning/pusher.py"
+
+[tool.pixi.feature.examples.dependencies]
+brax = "*"
+matplotlib = "*"
+scienceplots = "*"
+
+[tool.pixi.environments]
+default = ["dev"]
+dev = ["dev", "examples"]
+cuda11 = ["cuda11"]
+cuda11-dev = ["cuda11", "dev", "examples"]
+cuda12 = ["cuda12"]
+cuda12-dev = ["cuda12", "dev", "examples"]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
