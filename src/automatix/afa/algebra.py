@@ -1,3 +1,4 @@
+import itertools
 import math
 from abc import abstractmethod
 from functools import reduce
@@ -42,7 +43,12 @@ class AbstractAlgebra(Generic[_S]):
     @classmethod
     def product(cls, *xs: _S) -> _S:
         """Return the multiplication of two or more elements in the algebra"""
-        return reduce(cls.multiply, xs, cls.zero())
+        return reduce(cls.multiply, xs, cls.one())
+
+    @classmethod
+    def exponent(cls, x: _S, power: int) -> _S:
+        """Multiply `x` with itself `power` times"""
+        return cls.product(*itertools.repeat(x, power))
 
 
 @final
