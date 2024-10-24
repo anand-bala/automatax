@@ -5,9 +5,9 @@ import jax.numpy as jnp
 from jaxtyping import Array, Num, Scalar
 from typing_extensions import TypeAlias
 
+from automatix.algebra.semiring.jax_backend import MaxPlusSemiring
 from automatix.nfa import AbstractPredicate
 from automatix.nfa.automaton import Automaton, make_automaton_operator
-from automatix.nfa.semirings import MaxPlusSemiring
 
 Box: TypeAlias = Num[Array, " 4"]
 Circle: TypeAlias = Num[Array, " 3"]
