@@ -93,7 +93,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.3.2-hb9d3cd8_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/opt-einsum-3.4.0-hd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/opt_einsum-3.4.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/optree-0.13.0-py312h68727a3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/packaging-24.1-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/paginate-0.5.7-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/parso-0.8.4-pyhd8ed1ab_0.conda
@@ -226,7 +225,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/openssl-3.3.2-hd23fc13_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/opt-einsum-3.4.0-hd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/opt_einsum-3.4.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/osx-64/optree-0.13.0-py312hc5c4d5f_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/packaging-24.1-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/paginate-0.5.7-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/parso-0.8.4-pyhd8ed1ab_0.conda
@@ -437,7 +435,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.3.2-hb9d3cd8_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/opt-einsum-3.4.0-hd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/opt_einsum-3.4.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/optree-0.13.0-py312h68727a3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/packaging-24.1-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/paginate-0.5.7-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/parso-0.8.4-pyhd8ed1ab_0.conda
@@ -627,7 +624,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/openssl-3.3.2-hd23fc13_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/opt-einsum-3.4.0-hd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/opt_einsum-3.4.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/osx-64/optree-0.13.0-py312hc5c4d5f_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/packaging-24.1-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/paginate-0.5.7-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/parso-0.8.4-pyhd8ed1ab_0.conda
@@ -4465,47 +4461,6 @@ packages:
   - pkg:pypi/opt-einsum?source=hash-mapping
   size: 62487
   timestamp: 1727392477628
-- kind: conda
-  name: optree
-  version: 0.13.0
-  build: py312h68727a3_0
-  subdir: linux-64
-  url: https://conda.anaconda.org/conda-forge/linux-64/optree-0.13.0-py312h68727a3_0.conda
-  sha256: fbba1b905b94879a5a43e2560f2f860bd0a20909f757d719a8a03b91c3426a8b
-  md5: 2d67ae56107436e7ece7e68f631e3561
-  depends:
-  - __glibc >=2.17,<3.0.a0
-  - libgcc >=13
-  - libstdcxx >=13
-  - python >=3.12,<3.13.0a0
-  - python_abi 3.12.* *_cp312
-  - typing-extensions >=4.5
-  license: Apache-2.0
-  license_family: Apache
-  purls:
-  - pkg:pypi/optree?source=hash-mapping
-  size: 337756
-  timestamp: 1727986932806
-- kind: conda
-  name: optree
-  version: 0.13.0
-  build: py312hc5c4d5f_0
-  subdir: osx-64
-  url: https://conda.anaconda.org/conda-forge/osx-64/optree-0.13.0-py312hc5c4d5f_0.conda
-  sha256: 62bd5fc42b11db19b4cbbfcfa530bf282ced7083744685e8797faf51fdbf9f80
-  md5: c47f4222a506a3395cfe98eedb4f4d62
-  depends:
-  - __osx >=10.13
-  - libcxx >=17
-  - python >=3.12,<3.13.0a0
-  - python_abi 3.12.* *_cp312
-  - typing-extensions >=4.5
-  license: Apache-2.0
-  license_family: Apache
-  purls:
-  - pkg:pypi/optree?source=hash-mapping
-  size: 341918
-  timestamp: 1727986902989
 - kind: conda
   name: packaging
   version: '24.1'

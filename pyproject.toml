@@ -139,7 +139,7 @@ line-length = 127
 
 [tool.pyright]
 include = ["src"]
-pythonVersion = "3.9"
+pythonVersion = "3.11"
 pythonPlatform = "All"
 reportUnknownMemberType = false
 reportUnknownParameterType = false
@@ -148,7 +148,7 @@ reportUnknownArgumentType = false
 
 [tool.basedpyright]
 include = ["src"]
-pythonVersion = "3.9"
+pythonVersion = "3.11"
 pythonPlatform = "All"
 reportUnknownMemberType = false
 reportUnknownParameterType = false
