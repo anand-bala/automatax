@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Optional, Self, final
 from typing_extensions import override
 
 from automatix.algebra.abc import AbstractPolynomial
-from automatix.algebra.semiring import BooleanAlgebra
 
 if TYPE_CHECKING:
     import dd.autoref as bddlib
@@ -23,16 +22,16 @@ class Context:
     def __post_init__(self) -> None:
         self.declare(self.variables)
 
-    def declare(self, variables: set[str]) -> None:
+    def declare(self, variables: Iterable[str]) -> None:
         """Add variables to the polynomial context."""
-        new_vars = variables - self.variables
+        new_vars = set(variables) - self.variables
         if len(new_vars) > 0:
             self.bdd.declare(*new_vars)
             self.variables.update(new_vars)
 
 
 @final
-class BooleanPolynomial(AbstractPolynomial[bool, Context]):
+class BooleanPolynomial(AbstractPolynomial[bool]):
     """A Polynomial over the Boolean algebra.
 
     A Boolean polynomial is defined over the Boolean algebra, where addition is defined by logical OR and multiplication by
@@ -66,7 +65,6 @@ class BooleanPolynomial(AbstractPolynomial[bool, Context]):
         return poly
 
     @property
-    @override
     def context(self) -> Context:
         return self._manager
 
@@ -76,14 +74,14 @@ class BooleanPolynomial(AbstractPolynomial[bool, Context]):
         return self._bdd.support(self._expr)
 
     @override
-    def declare(self, vars: set[str]) -> None:
+    def declare(self, vars: Iterable[str]) -> Iterable["BooleanPolynomial"]:
         self._manager.declare(vars)
+        poly_vars = [self._wrap(self._bdd.var(v), self._manager) for v in vars]
+        return poly_vars
 
-    @override
     @classmethod
-    def zero(cls, manager: Optional[Context] = None) -> "BooleanPolynomial":
-        """Return a constant `0` polynomial"""
-        manager = manager or Context()
+    def zero(cls) -> "BooleanPolynomial":
+        manager = Context()
         return cls._wrap(manager.bdd.false, manager)
 
     @override

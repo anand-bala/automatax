@@ -1,7 +1,7 @@
-from abc import ABC, abstractclassmethod, abstractmethod
-from typing import Generic, Mapping, Optional, Self, TypeVar
+from abc import ABC, abstractmethod
+from typing import Generic, Iterable, Mapping, Self, TypeVar
 
-from typing_extensions import ClassVar, override
+from typing_extensions import ClassVar
 
 S = TypeVar("S")
 
@@ -44,16 +44,10 @@ class AbstractNegation(ABC, Generic[S]):
         """An involution in the algebra"""
 
 
-Ctx = TypeVar("Ctx")
-
-
-class AbstractPolynomial(ABC, Generic[S, Ctx]):
+class AbstractPolynomial(ABC, Generic[S]):
     """A polynomial with coefficients and the value of variables in `S`, where `S` is a semiring."""
 
-    @property
-    @abstractmethod
-    def context(self) -> Ctx:
-        """Give the polynomial's context manager"""
+    Ctx: type
 
     @property
     @abstractmethod
@@ -62,17 +56,17 @@ class AbstractPolynomial(ABC, Generic[S, Ctx]):
         ...
 
     @abstractmethod
-    def declare(self, vars: set[str]) -> None:
+    def declare(self, vars: Iterable[str]) -> Iterable[Self]:
         """Declare a list of variables that define the support of the polynomial."""
 
     @abstractmethod
     @classmethod
-    def zero(cls, manager: Optional[Ctx] = None) -> Self:
+    def zero(cls) -> Self:
         """Return a constant `0` polynomial"""
 
     @abstractmethod
     @classmethod
-    def const(cls, value: bool, manager: Optional[Ctx] = None) -> Self:
+    def const(cls, value: bool) -> Self:
         """Return a constant"""
 
     @abstractmethod
