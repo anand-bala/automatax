@@ -1,7 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Generic, Iterable, Mapping, Optional, Protocol, Self, TypeVar
-
-import networkx as nx
+from typing import Callable, Generic, Iterable, Mapping, Optional, TypeVar
 
 from automatix.algebra.abc import AbstractPolynomial, AbstractSemiring
 
@@ -17,7 +15,7 @@ class Transition(Generic[Alph, Q, K, Poly]):
     dst: Callable[[Alph], Poly]
 
 
-class Automaton(Generic[Alph, Q, Poly, K]):
+class AFA(Generic[Alph, Q, Poly, K]):
 
     def __init__(self) -> None:
         self._transitions: dict[Q, Transition] = dict()

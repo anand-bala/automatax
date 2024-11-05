@@ -9,7 +9,7 @@ from automatix.algebra.semiring.jax_backend import AbstractSemiring
 from automatix.nfa.predicate import AbstractPredicate
 
 
-class Automaton:
+class NFA:
 
     def __init__(self) -> None:
         self._graph = nx.DiGraph()
@@ -53,7 +53,7 @@ class AutomatonOperator(eqx.Module):
 
 
 def make_automaton_operator(
-    aut: Automaton,
+    aut: NFA,
     semiring: Type[AbstractSemiring],
     *,
     initial_weights: Optional[Num[Array, " {len(aut)}"]] = None,

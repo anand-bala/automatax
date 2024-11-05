@@ -1,9 +1,9 @@
-from automatix.nfa.automaton import Automaton, AutomatonOperator, make_automaton_operator
+from automatix.nfa.automaton import NFA, AutomatonOperator, make_automaton_operator
 from automatix.nfa.predicate import AbstractPredicate
 
 __all__ = [
     "AbstractPredicate",
     "AutomatonOperator",
-    "Automaton",
+    "NFA",
     "make_automaton_operator",
 ]

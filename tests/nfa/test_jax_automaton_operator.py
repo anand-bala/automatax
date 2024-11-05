@@ -7,7 +7,7 @@ from typing_extensions import TypeAlias
 
 from automatix.algebra.semiring.jax_backend import MaxPlusSemiring
 from automatix.nfa import AbstractPredicate
-from automatix.nfa.automaton import Automaton, make_automaton_operator
+from automatix.nfa.automaton import NFA, make_automaton_operator
 
 Box: TypeAlias = Num[Array, " 4"]
 Circle: TypeAlias = Num[Array, " 3"]
@@ -104,7 +104,7 @@ class Tautology(AbstractPredicate):
 
 
 def test_weight_fn() -> None:
-    sequential_aut = Automaton()
+    sequential_aut = NFA()
     sequential_aut.add_location(0, initial=True)
     sequential_aut.add_location(1)
     sequential_aut.add_location(2)

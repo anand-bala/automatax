@@ -1,10 +1,9 @@
 from dataclasses import dataclass
 from functools import lru_cache
-from os import PathLike
 from pathlib import Path
-from typing import IO, Optional
+from typing import Optional
 
-from lark import Lark, ParseTree, Token, Transformer, Tree, ast_utils, v_args
+from lark import Lark, Token, Transformer, ast_utils, v_args
 
 STREL_GRAMMAR_FILE = Path(__file__).parent / "strel.lark"
 
