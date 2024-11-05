@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generic, Iterable, Mapping, Self, TypeVar
+from typing import Generic, Mapping, Self, TypeVar
 
 from typing_extensions import ClassVar
 
@@ -47,8 +47,6 @@ class AbstractNegation(ABC, Generic[S]):
 class AbstractPolynomial(ABC, Generic[S]):
     """A polynomial with coefficients and the value of variables in `S`, where `S` is a semiring."""
 
-    Ctx: type
-
     @property
     @abstractmethod
     def support(self) -> set[str]:
@@ -56,18 +54,16 @@ class AbstractPolynomial(ABC, Generic[S]):
         ...
 
     @abstractmethod
-    def declare(self, vars: Iterable[str]) -> Iterable[Self]:
-        """Declare a list of variables that define the support of the polynomial."""
+    def declare(self, var: str) -> Self:
+        """Declare a variable for the polynomial."""
 
     @abstractmethod
-    @classmethod
-    def zero(cls) -> Self:
-        """Return a constant `0` polynomial"""
+    def new_zero(self) -> Self:
+        """Return a new constant `0` polynomial"""
 
     @abstractmethod
-    @classmethod
-    def const(cls, value: bool) -> Self:
-        """Return a constant"""
+    def const(self, value: S) -> Self:
+        """Return a new constant polynomial with value"""
 
     @abstractmethod
     def let(self, mapping: Mapping[str, S | Self]) -> Self:
@@ -83,20 +79,24 @@ class AbstractPolynomial(ABC, Generic[S]):
         """
 
     @abstractmethod
+    def negate(self) -> Self:
+        """return the negation of the polynomial"""
+
+    @abstractmethod
     def add(self, other: S | Self) -> Self:
-        """Return the addition (with appropriate semiring) of two polynomials."""
+        """Return the addition (with appropriate ring) of two polynomials."""
 
     @abstractmethod
     def multiply(self, other: S | Self) -> Self:
-        """Return the multiplication (with appropriate semiring) of two polynomials."""
+        """Return the multiplication (with appropriate ring) of two polynomials."""
 
     @abstractmethod
     def is_top(self) -> bool:
-        """Returns `True` if the Polynomial is just the additive identity in the semiring."""
+        """Returns `True` if the Polynomial is just the additive identity in the ring."""
 
     @abstractmethod
     def is_bottom(self) -> bool:
-        """Returns `True` if the Polynomial is just the multiplicative identity in the semiring."""
+        """Returns `True` if the Polynomial is just the multiplicative identity in the ring."""
 
     def __add__(self, other: S | Self) -> Self:
         return self.add(other)

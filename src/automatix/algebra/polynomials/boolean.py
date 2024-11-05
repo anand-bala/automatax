@@ -1,5 +1,4 @@
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Iterable, Mapping, Optional, Self, final
+from typing import TYPE_CHECKING, Mapping, Self, final
 
 from typing_extensions import override
 
@@ -14,22 +13,6 @@ else:
         import dd.autoref as bddlib
 
 
-@dataclass
-class Context:
-    variables: set[str] = field(default_factory=set)
-    bdd: bddlib.BDD = field(default_factory=lambda: bddlib.BDD())
-
-    def __post_init__(self) -> None:
-        self.declare(self.variables)
-
-    def declare(self, variables: Iterable[str]) -> None:
-        """Add variables to the polynomial context."""
-        new_vars = set(variables) - self.variables
-        if len(new_vars) > 0:
-            self.bdd.declare(*new_vars)
-            self.variables.update(new_vars)
-
-
 @final
 class BooleanPolynomial(AbstractPolynomial[bool]):
     """A Polynomial over the Boolean algebra.
@@ -38,102 +21,90 @@ class BooleanPolynomial(AbstractPolynomial[bool]):
     logical AND.
     """
 
-    def __init__(
-        self,
-        manager: Optional[Context] = None,
-        *,
-        variables: Optional[Iterable[str]] = None,
-    ) -> None:
+    def __init__(self, manager: bddlib.BDD) -> None:
         super().__init__()
 
-        variables = variables or {}
-        if manager:
-            self._manager = manager
-            self._manager.declare(set(variables))
-        else:
-            self._manager = Context(variables=set(variables))
-        self._expr: bddlib.Function = self._bdd.true
+        self._manager = manager
+        self._expr: bddlib.Function = self._manager.false
 
-    @property
-    def _bdd(self) -> bddlib.BDD:
-        return self._manager.bdd
-
-    @classmethod
-    def _wrap(cls, expr: bddlib.Function, manager: Context) -> "BooleanPolynomial":
-        poly = BooleanPolynomial(manager=manager)
+    def _wrap(self, expr: bddlib.Function) -> "BooleanPolynomial":
+        assert expr.bdd == self.context
+        poly = BooleanPolynomial(self.context)
         poly._expr = expr
         return poly
 
     @property
-    def context(self) -> Context:
+    def context(self) -> bddlib.BDD:
         return self._manager
 
     @property
     @override
     def support(self) -> set[str]:
-        return self._bdd.support(self._expr)
+        return self.context.support(self._expr)
 
     @override
-    def declare(self, vars: Iterable[str]) -> Iterable["BooleanPolynomial"]:
-        self._manager.declare(vars)
-        poly_vars = [self._wrap(self._bdd.var(v), self._manager) for v in vars]
-        return poly_vars
-
-    @classmethod
-    def zero(cls) -> "BooleanPolynomial":
-        manager = Context()
-        return cls._wrap(manager.bdd.false, manager)
+    def declare(self, var: str) -> "BooleanPolynomial":
+        self._manager.declare(var)
+        return self._wrap(self.context.var(var))
 
     @override
-    @classmethod
-    def const(cls, value: bool, manager: Optional[Context] = None) -> "BooleanPolynomial":
+    def new_zero(self) -> "BooleanPolynomial":
+        return self._wrap(self.context.false)
+
+    @override
+    def const(self, value: bool) -> "BooleanPolynomial":
         """Return a constant"""
-        poly = BooleanPolynomial(manager=manager)
-        if value is True:
-            poly._expr = poly._bdd.true
-        else:
-            poly._expr = poly._bdd.false
+        poly = BooleanPolynomial(self.context)
+        poly._expr = self.context.true if value else self.context.false
         return poly
 
     @override
     def let(self, mapping: Mapping[str, bool | Self]) -> "BooleanPolynomial":
         new_mapping = {name: val if isinstance(val, bool) else val._expr for name, val in mapping.items()}
-        new_func: bddlib.Function = self._bdd.let(new_mapping, self._expr)  # type: ignore
-        return self._wrap(new_func, self._manager)
+        new_func: bddlib.Function = self.context.let(new_mapping, self._expr)  # type: ignore
+        return self._wrap(new_func)
 
     @override
     def eval(self, mapping: Mapping[str, bool]) -> bool:
         assert self.support.issubset(mapping.keys())
         evald = self.let(mapping)
-        if evald == self._bdd.true:
+        if evald == self.context.true:
             return True
-        elif evald == self._bdd.false:
+        elif evald == self.context.false:
             return False
         else:
             raise RuntimeError("Evaluated polynomial is not constant, even with full support")
 
     @override
+    def negate(self) -> "BooleanPolynomial":
+        new_func = ~self._expr
+        return self._wrap(new_func)
+
+    @override
     def add(self, other: bool | Self) -> "BooleanPolynomial":
         if isinstance(other, bool):
-            wrapped = self.const(other, manager=self._manager)
+            wrapped = self.const(other)
         else:
             wrapped = other
-        new_func = self._expr | wrapped._expr
-        return self._wrap(new_func, self._manager)
+        new_func = self.context.apply("or", self._expr, wrapped._expr)
+        return self._wrap(new_func)
 
     @override
     def multiply(self, other: bool | Self) -> "BooleanPolynomial":
         if isinstance(other, bool):
-            wrapped = self.const(other, manager=self._manager)
+            wrapped = self.const(other)
         else:
             wrapped = other
-        new_func = self._expr & wrapped._expr
-        return self._wrap(new_func, self._manager)
+        new_func = self.context.apply("and", self._expr, wrapped._expr)
+        return self._wrap(new_func)
 
     @override
     def is_top(self) -> bool:
-        return self._expr == self._bdd.false
+        return self._expr == self.context.false
 
     @override
     def is_bottom(self) -> bool:
-        return self._expr == self._bdd.true
+        return self._expr == self.context.true
+
+    def __str__(self) -> str:
+        return str(self._expr.to_expr())

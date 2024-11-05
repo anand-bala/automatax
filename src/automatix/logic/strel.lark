@@ -12,15 +12,15 @@
 
 ?unary_op: ("globally" | "G") [time_interval] phi   -> globally_op
          | ("eventually" | "F") [time_interval] phi -> eventually_op
-         | ("next" | "X") [time_interval] phi       -> next_op
+         | ("next" | "X") [ "[" INT "]" ] phi       -> next_op
          | "escape" distance_interval phi             -> escape_op
          | "somewhere" distance_interval phi          -> somewhere_op
          | "everywhere" distance_interval phi         -> everywhere_op
-         | "!" phi                           -> not_op
+         | ("!" | "~") phi                           -> not_op
          | phi
 
 time_interval: "[" [INT] "," [INT] "]"
-distance_interval: "[" [NUMBER] "," [NUMBER] "]"
+distance_interval: "[" [NUMBER] "," NUMBER "]"
 
 identifier: CNAME | ESCAPED_STRING
 

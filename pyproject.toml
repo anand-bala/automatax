@@ -7,6 +7,7 @@ requires-python = "~=3.11"
 
 dependencies = [
   "typing-extensions",
+  "types-networkx",
   "jax~=0.4",
   "jaxtyping~=0.2",
   "numpy~=1.26",

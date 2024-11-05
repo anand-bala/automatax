@@ -1,11 +1,13 @@
 import itertools
 import types
+from abc import ABC
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional, Self
 
 from lark import Lark, Token, Transformer, ast_utils, v_args
+from typing_extensions import override
 
 STREL_GRAMMAR_FILE = Path(__file__).parent / "strel.lark"
 
@@ -14,92 +16,307 @@ class _Ast(ast_utils.Ast):
     pass
 
 
-class _Phi(_Ast):
-    pass
+class Expr(_Ast, ABC):
+
+    def __invert__(self) -> "Expr":
+        match self:
+            case NotOp(arg):
+                return arg
+            case phi:
+                return NotOp(phi)
+
+    def __and__(self, other: Self) -> "AndOp":
+        return AndOp(self, other)
+
+    def __or__(self, other: Self) -> "OrOp":
+        return OrOp(self, other)
+
+    def expand_intervals(self) -> "Expr":
+        """Expand the formula to eliminate intervals and Gloablly operators."""
+        # By default, just return self, temporal operators will override
+        return self
 
 
-@dataclass
+@dataclass(eq=True, frozen=True, slots=True)
 class TimeInterval(_Ast):
     start: Optional[int]
     end: Optional[int]
 
+    def __str__(self) -> str:
+        return f"[{self.start or ''}, {self.end or ''}]"
 
-@dataclass
+    def is_unbounded(self) -> bool:
+        return self.end is not None
+
+    def __post_init__(self) -> None:
+        match (self.start, self.end):
+            case (int(t1), int(t2)) if t1 == t2:
+                raise ValueError("Time intervals cannot be point values [a,a]")
+            case (int(t1), int(t2)) if t1 > t2:
+                raise ValueError("Time interval [a,b] cannot have a > b")
+            case (int(t1), int(t2)) if t1 < 0 or t2 < 0:
+                raise ValueError("Time interval cannot have negative bounds")
+
+    def __iter__(self) -> Iterator[int]:
+        """Return an iterator over the discrete range of the time interval
+
+        !!! note
+
+            If the time interval is unbounded, this will return a generator that goes on forever
+        """
+        match (self.start, self.end):
+            case (None, None):
+                return iter([])
+            case (start, None):
+                return itertools.count(start)
+            case (None, end):
+                return iter(range(0, end + 1))
+            case (start, end):
+                return iter(range(start, end + 1))
+
+
+@dataclass(eq=True, frozen=True, slots=True)
 class DistanceInterval(_Ast):
     start: Optional[float]
-    end: Optional[float]
+    end: float
+
+    def __str__(self) -> str:
+        return f"[{self.start or ''}, {self.end}]"
 
 
-@dataclass
-class Identifier(_Phi):
+@dataclass(eq=True, frozen=True, slots=True)
+class Identifier(Expr):
     name: str
 
+    def __post_init__(self) -> None:
+        assert len(self.name) > 0, "Identifier has to have a non-empty value"
+        assert not self.name.isspace(), "Identifier cannot have only whitespace characters"
 
-@dataclass
-class NotOp(_Phi):
-    arg: _Phi
-
-
-@dataclass
-class AndOp(_Phi):
-    lhs: _Phi
-    rhs: _Phi
-
-
-@dataclass
-class OrOp(_Phi):
-    lhs: _Phi
-    rhs: _Phi
+    def __str__(self) -> str:
+        if self.name.isalnum():
+            return self.name
+        else:
+            return f'"{self.name}"'
 
 
-@dataclass
-class EverywhereOp(_Phi):
+@dataclass(eq=True, frozen=True, slots=True)
+class NotOp(Expr):
+    arg: Expr
+
+    def __str__(self) -> str:
+        return f"! {self.arg}"
+
+    @override
+    def expand_intervals(self) -> "Expr":
+        return NotOp(self.arg.expand_intervals())
+
+
+@dataclass(eq=True, frozen=True, slots=True)
+class AndOp(Expr):
+    lhs: Expr
+    rhs: Expr
+
+    def __str__(self) -> str:
+        return f"({self.lhs} & {self.rhs})"
+
+
+@dataclass(eq=True, frozen=True, slots=True)
+class OrOp(Expr):
+    lhs: Expr
+    rhs: Expr
+
+    def __str__(self) -> str:
+        return f"({self.lhs} | {self.rhs})"
+
+    @override
+    def expand_intervals(self) -> "Expr":
+        return OrOp(self.lhs.expand_intervals(), self.rhs.expand_intervals())
+
+
+@dataclass(eq=True, frozen=True, slots=True)
+class EverywhereOp(Expr):
     interval: DistanceInterval
-    arg: _Phi
+    arg: Expr
+
+    def __str__(self) -> str:
+        return f"(everywhere{self.interval} {self.arg})"
+
+    @override
+    def expand_intervals(self) -> "Expr":
+        return EverywhereOp(self.interval, self.arg.expand_intervals())
 
 
-@dataclass
-class SomewhereOp(_Phi):
+@dataclass(eq=True, frozen=True, slots=True)
+class SomewhereOp(Expr):
     interval: DistanceInterval
-    arg: _Phi
+    arg: Expr
+
+    def __str__(self) -> str:
+        return f"(somewhere{self.interval} {self.arg})"
+
+    @override
+    def expand_intervals(self) -> "Expr":
+        return SomewhereOp(self.interval, self.arg.expand_intervals())
 
 
-@dataclass
-class EscapeOp(_Phi):
+@dataclass(eq=True, frozen=True, slots=True)
+class EscapeOp(Expr):
     interval: DistanceInterval
-    arg: _Phi
+    arg: Expr
+
+    def __str__(self) -> str:
+        return f"(escape{self.interval} {self.arg})"
+
+    @override
+    def expand_intervals(self) -> "Expr":
+        return EscapeOp(self.interval, self.arg.expand_intervals())
 
 
-@dataclass
-class ReachOp(_Phi):
-    lhs: _Phi
+@dataclass(eq=True, frozen=True, slots=True)
+class ReachOp(Expr):
+    lhs: Expr
     interval: DistanceInterval
-    rhs: _Phi
+    rhs: Expr
+
+    def __str__(self) -> str:
+        return f"({self.lhs} reach{self.interval} {self.rhs})"
+
+    @override
+    def expand_intervals(self) -> "Expr":
+        return ReachOp(
+            interval=self.interval,
+            lhs=self.lhs.expand_intervals(),
+            rhs=self.rhs.expand_intervals(),
+        )
 
 
-@dataclass
-class NextOp(_Phi):
+@dataclass(eq=True, frozen=True, slots=True)
+class NextOp(Expr):
+    steps: Optional[int]
+    arg: Expr
+
+    def __str__(self) -> str:
+        match self.steps:
+            case None | 1:
+                step_str = ""
+            case t:
+                step_str = f"[{t}]"
+        return f"(X{step_str} {self.arg})"
+
+    def __post_init__(self) -> None:
+        match self.steps:
+            case int(t) if t <= 0:
+                raise ValueError("Next operator cannot have non-positive steps")
+            case 1:
+                # Collapse X[1] to X
+                object.__setattr__(self, "steps", None)
+
+    @override
+    def expand_intervals(self) -> "Expr":
+        arg = self.arg.expand_intervals()
+        match self.steps:
+            case None:
+                return NextOp(None, arg)
+            case t:
+                expr = arg
+                for _ in range(t):
+                    expr = NextOp(None, expr)
+                return expr
+
+
+@dataclass(eq=True, frozen=True, slots=True)
+class GloballyOp(Expr):
     interval: Optional[TimeInterval]
-    arg: _Phi
+    arg: Expr
+
+    def __post_init__(self) -> None:
+        match self.interval:
+            case None | TimeInterval(None, None) | TimeInterval(0, None):
+                # All unbounded, so collapse
+                object.__setattr__(self, "interval", None)
+
+    def __str__(self) -> str:
+        return f"(G{self.interval or ''} {self.arg})"
+
+    @override
+    def expand_intervals(self) -> "Expr":
+        return NotOp(EventuallyOp(self.interval, NotOp(self.arg))).expand_intervals()
 
 
-@dataclass
-class GloballyOp(_Phi):
+@dataclass(eq=True, frozen=True, slots=True)
+class EventuallyOp(Expr):
     interval: Optional[TimeInterval]
-    arg: _Phi
+    arg: Expr
+
+    def __post_init__(self) -> None:
+        match self.interval:
+            case None | TimeInterval(None, None) | TimeInterval(0, None):
+                # All unbounded, so collapse
+                object.__setattr__(self, "interval", None)
+
+    def __str__(self) -> str:
+        return f"(F{self.interval or ''} {self.arg})"
+
+    @override
+    def expand_intervals(self) -> "Expr":
+        match self.interval:
+            case None | TimeInterval(None, None) | TimeInterval(0, None):
+                # Unbounded F
+                return EventuallyOp(None, self.arg.expand_intervals())
+            case TimeInterval(0, int(t2)) | TimeInterval(None, int(t2)):
+                # F[0, t2]
+                arg = self.arg.expand_intervals()
+                expr = arg
+                for _ in range(t2):
+                    expr = OrOp(expr, NextOp(None, arg))
+                return expr
+            case TimeInterval(int(t1), None):
+                # F[t1,inf]
+                assert t1 > 0
+                return NextOp(t1, EventuallyOp(None, self.arg)).expand_intervals()
+            case TimeInterval(int(t1), int(t2)):
+                # F[t1, t2]
+                assert t1 > 0
+                # F[t1, t2] = X[t1] F[0,t2-t1] arg
+                # Nested nexts until t1
+                return NextOp(t1, EventuallyOp(TimeInterval(0, t2 - t1), self.arg)).expand_intervals()
+            case TimeInterval():
+                raise RuntimeError(f"Unexpected time interval {self.interval}")
 
 
-@dataclass
-class EventuallyOp(_Phi):
+@dataclass(eq=True, frozen=True, slots=True)
+class UntilOp(Expr):
+    lhs: Expr
     interval: Optional[TimeInterval]
-    arg: _Phi
+    rhs: Expr
 
+    def __str__(self) -> str:
+        return f"({self.lhs} U{self.interval or ''} {self.rhs})"
 
-@dataclass
-class UntilOp(_Phi):
-    lhs: _Phi
-    interval: Optional[TimeInterval]
-    rhs: _Phi
+    def __post_init__(self) -> None:
+        match self.interval:
+            case None | TimeInterval(None, None) | TimeInterval(0, None):
+                # All unbounded, so collapse
+                object.__setattr__(self, "interval", None)
+
+    @override
+    def expand_intervals(self) -> Expr:
+        new_lhs = self.lhs.expand_intervals()
+        new_rhs = self.rhs.expand_intervals()
+        match self.interval:
+            case None | TimeInterval(None | 0, None):
+                # Just make an unbounded one here
+                return UntilOp(new_lhs, None, new_rhs)
+            case TimeInterval(t1, None):  # Unbounded end
+                return GloballyOp(
+                    interval=TimeInterval(0, t1),
+                    arg=UntilOp(interval=None, lhs=new_lhs, rhs=new_rhs),
+                ).expand_intervals()
+            case TimeInterval(t1, _):
+                z1 = EventuallyOp(interval=self.interval, arg=new_lhs).expand_intervals()
+                until_interval = TimeInterval(t1, None)
+                z2 = UntilOp(interval=until_interval, lhs=new_lhs, rhs=new_rhs).expand_intervals()
+                return AndOp(z1, z2)
 
 
 class _TransformTerminals(Transformer):
@@ -135,7 +352,10 @@ def get_parser() -> Lark:
 @lru_cache(maxsize=1)
 def _to_ast_transformer() -> Transformer:
     ast = types.ModuleType("ast")
-    for c in itertools.chain(_Ast.__subclasses__(), _Phi.__subclasses__()):
+    for c in itertools.chain(
+        [TimeInterval, DistanceInterval],
+        Expr.__subclasses__(),
+    ):
         ast.__dict__[c.__name__] = c
     return ast_utils.create_transformer(ast, _TransformTerminals())
 
@@ -143,7 +363,7 @@ def _to_ast_transformer() -> Transformer:
 TO_AST_TRANSFORMER = _to_ast_transformer()
 
 
-def parse(expr: str) -> _Ast:
+def parse(expr: str) -> Expr:
     tree = get_parser().parse(expr)
 
     return TO_AST_TRANSFORMER.transform(tree)
