@@ -1,3 +1,5 @@
+import itertools
+import types
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -100,7 +102,7 @@ class UntilOp(_Phi):
     rhs: _Phi
 
 
-class _ToAst(Transformer):
+class _TransformTerminals(Transformer):
 
     def CNAME(self, s: Token) -> str:  # noqa: N802
         return str(s)
@@ -131,13 +133,17 @@ def get_parser() -> Lark:
 
 
 @lru_cache(maxsize=1)
-def _get_transformer() -> Transformer:
-    import sys
+def _to_ast_transformer() -> Transformer:
+    ast = types.ModuleType("ast")
+    for c in itertools.chain(_Ast.__subclasses__(), _Phi.__subclasses__()):
+        ast.__dict__[c.__name__] = c
+    return ast_utils.create_transformer(ast, _TransformTerminals())
 
-    return ast_utils.create_transformer(sys.modules[__name__], _ToAst())
+
+TO_AST_TRANSFORMER = _to_ast_transformer()
 
 
 def parse(expr: str) -> _Ast:
     tree = get_parser().parse(expr)
 
-    return _get_transformer().transform(tree)
+    return TO_AST_TRANSFORMER.transform(tree)
