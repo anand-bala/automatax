@@ -14,7 +14,7 @@ dependencies = [
   "sympy~=1.12",
   "networkx~=3.2",
   "dd~=0.6.0",
-  "plum-dispatch~=2.5",
+  "lark~=1.2",
 ]
 
 [tool.setuptools.packages.find]
@@ -36,7 +36,7 @@ numpy = "~=1.26"
 equinox = "~=0.11"
 sympy = "~=1.12"
 networkx = "~=3.2"
-plum-dispatch = ">=2.5.2,<3"
+lark = "~=1.2"
 
 [tool.pixi.host-dependencies]
 pip = "*"
