@@ -52,6 +52,22 @@ class BooleanPolynomial(AbstractPolynomial[bool]):
         return self._wrap(self.context.false)
 
     @override
+    def top(self) -> "BooleanPolynomial":
+        return self._wrap(self.context.true)
+
+    @override
+    def bottom(self) -> "BooleanPolynomial":
+        return self._wrap(self.context.false)
+
+    @override
+    def is_top(self) -> bool:
+        return self._expr == self.context.false
+
+    @override
+    def is_bottom(self) -> bool:
+        return self._expr == self.context.true
+
+    @override
     def const(self, value: bool) -> "BooleanPolynomial":
         """Return a constant"""
         poly = BooleanPolynomial(self.context)
@@ -97,14 +113,6 @@ class BooleanPolynomial(AbstractPolynomial[bool]):
             wrapped = other
         new_func = self.context.apply("and", self._expr, wrapped._expr)
         return self._wrap(new_func)
-
-    @override
-    def is_top(self) -> bool:
-        return self._expr == self.context.false
-
-    @override
-    def is_bottom(self) -> bool:
-        return self._expr == self.context.true
 
     def __str__(self) -> str:
         return str(self._expr.to_expr())

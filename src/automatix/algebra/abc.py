@@ -62,6 +62,22 @@ class AbstractPolynomial(ABC, Generic[S]):
         """Return a new constant `0` polynomial"""
 
     @abstractmethod
+    def top(self) -> Self:
+        """Return the multiplicative identity of the polynomial ring"""
+
+    @abstractmethod
+    def bottom(self) -> Self:
+        """Return the additive identity of the polynomial ring"""
+
+    @abstractmethod
+    def is_bottom(self) -> bool:
+        """Returns `True` if the Polynomial is just the additive identity in the ring."""
+
+    @abstractmethod
+    def is_top(self) -> bool:
+        """Returns `True` if the Polynomial is just the multiplicative identity in the ring."""
+
+    @abstractmethod
     def const(self, value: S) -> Self:
         """Return a new constant polynomial with value"""
 
@@ -89,14 +105,6 @@ class AbstractPolynomial(ABC, Generic[S]):
     @abstractmethod
     def multiply(self, other: S | Self) -> Self:
         """Return the multiplication (with appropriate ring) of two polynomials."""
-
-    @abstractmethod
-    def is_top(self) -> bool:
-        """Returns `True` if the Polynomial is just the additive identity in the ring."""
-
-    @abstractmethod
-    def is_bottom(self) -> bool:
-        """Returns `True` if the Polynomial is just the multiplicative identity in the ring."""
 
     def __add__(self, other: S | Self) -> Self:
         return self.add(other)
