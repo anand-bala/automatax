@@ -60,7 +60,7 @@ def test_signed_dist_to_box() -> None:
     print(dists)
 
 
-def _no_op(x):
+def _no_op(x):  # noqa: ANN001, ANN202
     return x
 
 
