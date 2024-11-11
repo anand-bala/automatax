@@ -83,6 +83,24 @@ class DistanceInterval(_Ast):
     def __str__(self) -> str:
         return f"[{self.start or ''}, {self.end}]"
 
+    def __post_init__(self) -> None:
+        match (self.start, self.end):
+            case (None, _):
+                object.__setattr__(self, "start", 0.0)
+            case (float(start), float(end)) if start < 0 or end < 0:
+                raise ValueError("Distane cannot be less than 0")
+            case (float(start), float(end)) if start >= end:
+                raise ValueError(f"Distance interval cannot have `start` >= `end` ({start} >= {end})")
+
+
+@dataclass(eq=True, frozen=True, slots=True)
+class Constant(Expr):
+    value: bool
+
+
+true = Constant(True)
+false = Constant(False)
+
 
 @dataclass(eq=True, frozen=True, slots=True)
 class Identifier(Expr):

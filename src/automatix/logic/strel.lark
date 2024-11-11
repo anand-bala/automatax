@@ -1,8 +1,7 @@
 ?phi: "(" phi ")"
     | or_op
     | identifier
-    | "true"
-    | "false"
+    | constant
 
 // Binary ops
 ?or_op: (phi "|")? and_op
@@ -23,6 +22,7 @@ time_interval: "[" [INT] "," [INT] "]"
 distance_interval: "[" [NUMBER] "," NUMBER "]"
 
 identifier: CNAME | ESCAPED_STRING
+constant: "true" | "false"
 
 %import common.ESCAPED_STRING
 %import common.CNAME
