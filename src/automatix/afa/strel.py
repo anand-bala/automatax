@@ -1,8 +1,10 @@
 """Transform STREL parse tree to an AFA."""
 
+import math
+from collections import deque
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Generic, TypeAlias, TypeVar
+from typing import Callable, Generic, Iterable, Iterator, Optional, TypeAlias, TypeVar
 
 import networkx as nx
 
@@ -63,10 +65,11 @@ class StrelAutomaton(AFA[Alph, Q, K]):
         label_fn: LabellingFn[K],
         polynomial: Poly[K],
         max_locs: int,
+        dist_attr: Optional[str] = None,
     ) -> "StrelAutomaton":
         """Convert a STREL expression to an AFA with the given alphabet"""
 
-        visitor = _ExprMapper(label_fn, polynomial, max_locs)
+        visitor = _ExprMapper(label_fn, polynomial, max_locs, dist_attr)
         visitor.visit(phi)
 
         transitions = Transitions(visitor.transitions)
@@ -78,10 +81,17 @@ class StrelAutomaton(AFA[Alph, Q, K]):
 class _ExprMapper(Generic[K]):
     """Post-order visitor for creating transitions"""
 
-    def __init__(self, label_fn: LabellingFn[K], polynomial: Poly[K], max_locs: int) -> None:
+    def __init__(
+        self,
+        label_fn: LabellingFn[K],
+        polynomial: Poly[K],
+        max_locs: int,
+        dist_attr: Optional[str] = None,
+    ) -> None:
         assert max_locs > 0, "STREL graphs should have at least 1 location"
         self.max_locs = max_locs
         self.label_fn = label_fn
+        self.dist_attr = dist_attr or "weight"
         # Create a const polynomial for tracking nodes
         self.manager = polynomial
         # Maps the string representation of a subformula to the AFA node
@@ -120,37 +130,35 @@ class _ExprMapper(Generic[K]):
             self.transitions[(phi, loc)] = self.transitions[(alias, loc)]
             self.var_node_map.setdefault(str((not_phi_str, loc)), (not_phi, loc))
 
-    def _add_temporal_transition(self, phi: strel.Expr, transition: Callable[[Location, Alph], Poly[K]]) -> None:
+    def _add_transition(self, phi: strel.Expr, transition: Callable[[Location, Alph], Poly[K]]) -> None:
         for loc in range(self.max_locs):
-            self.transitions.setdefault(
-                (phi, loc),
-                partial(transition, loc),
-            )
+            self.transitions.setdefault((phi, loc), partial(transition, loc))
 
     def _expand_add_next(self, phi: strel.NextOp) -> None:
         if phi.steps is None:
             steps = 1
         else:
             steps = phi.steps
+        # print(f"{steps=}")
         # Expand the formula into nested nexts
         for i in range(steps, 0, -1):
-            expr = strel.NextOp(i, phi.arg)
+            # print(f"{i=}")
+            expr: strel.Expr = strel.NextOp(i, phi.arg)
             self._add_aut_state(expr)
 
-        # Add the temporal transition while there is a nested next
-        for i in range(steps, 1, -1):  # doesn't include 1
+        for i in range(steps, 1, -1):
+            # print(f"{i=}")
             expr = strel.NextOp(i, phi.arg)
+            # Expand as X[t] arg = XX[t - 1] arg
             sub_expr = strel.NextOp(i - 1, phi.arg)
-            self._add_temporal_transition(
-                expr,
-                lambda loc, _, sub_expr=sub_expr: self.expr_var_map[(sub_expr, loc)],
-            )
+            self._add_transition(expr, lambda loc, _, sub_expr=sub_expr: self.expr_var_map[(sub_expr, loc)])
         # Add the final bit where there is no nested next
-        self._add_temporal_transition(phi, lambda loc, _, arg=phi.arg: self.expr_var_map[(arg, loc)])
+        # Expand as X[1] arg = X arg
+        self._add_transition(strel.NextOp(1, phi.arg), lambda loc, _, arg=phi.arg: self.expr_var_map[(arg, loc)])
 
     def _expand_add_globally(self, phi: strel.GloballyOp) -> None:
         # G[a,b] phi = ~F[a,b] ~phi
-        expr = ~strel.EventuallyOp(phi.interval, ~phi.arg)
+        expr: strel.Expr = ~strel.EventuallyOp(phi.interval, ~phi.arg)
         self.visit(expr)
         self._add_expr_alias(phi, expr)
 
@@ -167,33 +175,39 @@ class _ExprMapper(Generic[K]):
                 # Return as is
                 self._add_aut_state(phi)
                 # Expand as F arg = arg | X F arg
-                self._add_temporal_transition(
+                self._add_transition(
                     phi,
                     lambda loc, alph: self.transitions[(phi.arg, loc)](alph) + self.expr_var_map[(phi, loc)],
                 )
             case strel.TimeInterval(0 | None, int(t2)):
                 # phi = F[0, t2] arg
                 for i in range(t2, 0, -1):
-                    expr = strel.EventuallyOp(strel.TimeInterval(0, i), phi.arg)
+                    expr: strel.Expr = strel.EventuallyOp(strel.TimeInterval(0, i), phi.arg)
                     self._add_aut_state(expr)
-                # Expand as F[0, t2] arg = arg | X F[0, t2-1] arg
-                for i in range(t2, 1, -1):  # Ignore F[0, 1] arg
-                    expr = strel.EventuallyOp(strel.TimeInterval(0, i), phi.arg)
-                    sub_expr = strel.EventuallyOp(strel.TimeInterval(0, i - 1), phi.arg)
-                    self._add_temporal_transition(
+                for i in range(t2, 0, -1):
+                    expr: strel.Expr = strel.EventuallyOp(strel.TimeInterval(0, i), phi.arg)
+                    sub_expr: strel.Expr  # keeps track of the RHS of the OR operation in the expansion
+                    if i > 1:
+                        # Expand as F[0, t2] arg = arg | X F[0, t2-1] arg
+                        sub_expr = strel.EventuallyOp(strel.TimeInterval(0, i - 1), phi.arg)
+                    else:  # i == 1
+                        # Expand as F[0, 1] arg = arg | X arg
+                        sub_expr = phi.arg
+                    self._add_transition(
                         expr,
                         lambda loc, alph, sub_expr=sub_expr: self.transitions[(phi.arg, loc)](alph)
                         + self.expr_var_map[(sub_expr, loc)],
                     )
+
             case strel.TimeInterval(int(t1), None):
                 # phi = F[t1,] arg = X[t1] F arg
-                expr = strel.NextOp(t1, strel.EventuallyOp(None, phi.arg))
+                expr: strel.Expr = strel.NextOp(t1, strel.EventuallyOp(None, phi.arg))
                 self.visit(expr)
                 self._add_expr_alias(phi, expr)
 
             case strel.TimeInterval(int(t1), int(t2)):
                 # phi = F[t1, t2] arg = X[t1] F[0, t2 - t1] arg
-                expr = strel.NextOp(
+                expr: strel.Expr = strel.NextOp(
                     t1,
                     strel.EventuallyOp(
                         strel.TimeInterval(0, t2 - t1),
@@ -211,14 +225,14 @@ class _ExprMapper(Generic[K]):
                 # phi = lhs U rhs
                 self._add_aut_state(phi)
                 # Expand as phi = lhs U rhs = rhs | (lhs & X phi)
-                self._add_temporal_transition(
+                self._add_transition(
                     phi,
                     lambda loc, alph: self.transitions[(phi.rhs, loc)](alph)
                     + (self.transitions[(phi.lhs, loc)](alph) * self.expr_var_map[(phi, loc)]),
                 )
             case strel.TimeInterval(int(t1), None):
                 # phi = lhs U[t1,] rhs = ~F[0,t1] ~(lhs U rhs)
-                expr = ~strel.EventuallyOp(
+                expr: strel.Expr = ~strel.EventuallyOp(
                     strel.TimeInterval(0, t1),
                     ~strel.UntilOp(phi.lhs, None, phi.rhs),
                 )
@@ -226,7 +240,7 @@ class _ExprMapper(Generic[K]):
                 self._add_expr_alias(phi, expr)
             case strel.TimeInterval(int(t1), int()):
                 # phi = lhs U[t1,t2] rhs = (F[t1,t2] rhs) & (lhs U[t1,] rhs)
-                expr = strel.AndOp(
+                expr: strel.Expr = strel.AndOp(
                     strel.EventuallyOp(phi.interval, phi.rhs),
                     strel.UntilOp(
                         interval=strel.TimeInterval(t1, None),
@@ -237,6 +251,48 @@ class _ExprMapper(Generic[K]):
                 self.visit(expr)
                 self._add_expr_alias(phi, expr)
 
+    def _expand_add_reach(self, phi: strel.ReachOp) -> None:
+        d1 = phi.interval.start or 0.0
+        d2 = phi.interval.end or math.inf
+
+        def check_reach(loc: Location, input: Alph, d1: float, d2: float, dist_attr: str) -> Poly[K]:
+            # use a modified version of networkx's all_simple_paths algorithm to generate all simple paths
+            # constrained by the distance intervals.
+            # Then, make the symbolic expressions for each path, with the terminal one being for the rhs
+            expr = self.manager.bottom()
+            for edge_path in _all_reach_edge_paths(input, loc, d1, d2, dist_attr):
+                path = [loc] + [e[1] for e in edge_path]
+                # print(f"{path=}")
+                # Path expr checks if last node satisfies rhs and all others satisfy lhs
+                path_expr = self.expr_var_map[(phi.rhs, path[-1])]
+                for l_p in reversed(path[:-1]):
+                    path_expr *= self.expr_var_map[(phi.lhs, l_p)]
+                expr += path_expr
+                # Break early if TOP/True
+                if expr.is_top():
+                    return expr
+            return expr
+
+        self._add_transition(phi, partial(check_reach, d1=d1, d2=d2, dist_attr=self.dist_attr))
+
+    def _expand_add_somewhere(self, phi: strel.SomewhereOp) -> None:
+        # phi = somewhere[d1,d2] arg = true R[d1,d2] arg
+        expr: strel.Expr = strel.ReachOp(strel.true, phi.interval, phi.arg)
+        self.visit(expr)
+        self._add_expr_alias(phi, expr)
+
+    def _expand_add_everywhere(self, phi: strel.EverywhereOp) -> None:
+        # phi = everywhere[d1,d2] arg = ~ somewhere[d1,d2] ~arg
+        expr: strel.Expr = ~strel.SomewhereOp(phi.interval, ~phi.arg)
+        self.visit(expr)
+        self._add_expr_alias(phi, expr)
+
+    def _expand_add_escape(self, phi: strel.EscapeOp) -> None:
+        def instantaneous_escape(loc: Location, input: Alph) -> Poly[K]:
+            pass
+
+        self._add_transition(phi, instantaneous_escape)
+
     def visit(self, phi: strel.Expr) -> None:
         # Skip if phi already visited
         if str(phi) in self.expr_var_map.keys():
@@ -245,17 +301,24 @@ class _ExprMapper(Generic[K]):
         # 2. Add phi and ~phi as AFA nodes
         # 3. Add the transition for phi and ~phi
         match phi:
+            case strel.Constant(value):
+                self._add_aut_state(phi)
+                # The transition is just the value
+                if value:
+                    self._add_transition(phi, lambda *_: self.manager.top())
+                else:
+                    self._add_transition(phi, lambda *_: self.manager.bottom())
             case strel.Identifier():
                 self._add_aut_state(phi)
                 # The transition is to evaluate it.
-                self._add_temporal_transition(
+                self._add_transition(
                     phi,
                     lambda loc, alph: self.manager.const(self.label_fn(alph, loc, phi.name)),
                 )
             case strel.NotOp(arg):
                 # Just add the argument as the negation will be added implicitely
                 self.visit(arg)
-                self._add_temporal_transition(
+                self._add_transition(
                     phi,
                     lambda loc, alph: self.transitions[(arg, loc)](alph).negate(),
                 )
@@ -263,7 +326,7 @@ class _ExprMapper(Generic[K]):
                 self.visit(lhs)
                 self.visit(rhs)
                 self._add_aut_state(phi)
-                self._add_temporal_transition(
+                self._add_transition(
                     phi,
                     lambda loc, alph: self.transitions[(lhs, loc)](alph) * self.transitions[(rhs, loc)](alph),
                 )
@@ -271,29 +334,29 @@ class _ExprMapper(Generic[K]):
                 self.visit(lhs)
                 self.visit(rhs)
                 self._add_aut_state(phi)
-                self._add_temporal_transition(
+                self._add_transition(
                     phi,
                     lambda loc, alph: self.transitions[(lhs, loc)](alph) + self.transitions[(rhs, loc)](alph),
                 )
-            case strel.EverywhereOp(interval, arg):
+            case strel.EverywhereOp(_, arg):
                 self.visit(arg)
                 self._add_aut_state(phi)
-                # TODO: do something for the everywhere closure
+                self._expand_add_everywhere(phi)
                 raise NotImplementedError()
-            case strel.SomewhereOp(interval, arg):
+            case strel.SomewhereOp(_, arg):
                 self.visit(arg)
                 self._add_aut_state(phi)
-                # TODO: do something for the everywhere closure
-                raise NotImplementedError()
-            case strel.EscapeOp(interval, arg):
+                self._expand_add_somewhere(phi)
+            case strel.EscapeOp(_, arg):
                 self.visit(arg)
                 self._add_aut_state(phi)
-                raise NotImplementedError()
-            case strel.ReachOp(lhs, interval, rhs):
+                # self._expand_add_escape(phi)
+                raise NotImplementedError("We currently don't support escape")
+            case strel.ReachOp(lhs, _, rhs):
                 self.visit(lhs)
                 self.visit(rhs)
                 self._add_aut_state(phi)
-                raise NotImplementedError()
+                self._expand_add_reach(phi)
             case strel.NextOp():
                 self.visit(phi.arg)
                 self._expand_add_next(phi)
@@ -307,3 +370,71 @@ class _ExprMapper(Generic[K]):
                 self.visit(phi.lhs)
                 self.visit(phi.rhs)
                 self._expand_add_until(phi)
+
+
+def _all_reach_edge_paths(
+    graph: Alph, loc: Location, d1: float, d2: float, dist_attr: str
+) -> Iterator[list[tuple[Location, Location, float]]]:
+    """Return all edge paths for reachable nodes. The path lengths are always between `d1` and `d2` (inclusive)"""
+
+    # This adapts networkx's all_simple_edge_paths code.
+    #
+    # Citations:
+    #
+    # 1. https://xlinux.nist.gov/dads/HTML/allSimplePaths.html
+    # 2. https://networkx.org/documentation/stable/_modules/networkx/algorithms/simple_paths.html#all_simple_paths
+    def get_edges(node: Location) -> Iterable[tuple[Location, Location, float]]:
+        return graph.edges(node, data=dist_attr, default=1.0)
+
+    # The current_path is a dictionary that maps nodes in the path to the edge that was
+    # used to enter that node (instead of a list of edges) because we want both a fast
+    # membership test for nodes in the path and the preservation of insertion order.
+    # Edit: It also keeps track of the cumulative distance of the path.
+    current_path: dict[Location | None, None | tuple[None | Location, Location, float]] = {None: None}
+
+    # We simulate recursion with a stack, keeping the current path being explored
+    # and the outgoing edge iterators at each point in the stack.
+    # To avoid unnecessary checks, the loop is structured in a way such that a path
+    # is considered for yielding only after a new node/edge is added.
+    # We bootstrap the search by adding a dummy iterator to the stack that only yields
+    # a dummy edge to source (so that the trivial path has a chance of being included).
+    stack: deque[Iterator[tuple[None | Location, Location, float]]] = deque([iter([(None, loc, 0.0)])])
+
+    # Note that the target is every other reachable node in the graph.
+    targets = graph.nodes
+
+    while len(stack) > 0:
+        # 1. Try to extend the current path.
+        #
+        # Checks if node already visited.
+        next_edge = next((e for e in stack[-1] if e[1] not in current_path), None)
+        if next_edge is None:
+            # All edges of the last node in the current path have been explored.
+            stack.pop()
+            current_path.popitem()
+            continue
+        previous_node, next_node, next_dist = next_edge
+
+        if previous_node is not None:
+            assert current_path[previous_node] is not None
+            prev_path_len = (current_path[previous_node] or (None, None, 0.0))[2]
+            new_path_len = prev_path_len + next_dist
+        else:
+            new_path_len = 0.0
+
+        # 2. Check if we've reached a target (if adding the next_edge puts us in the distance range).
+        if d1 <= new_path_len <= d2:
+            # Yield the current path, removing the initial dummy edges [None, (None, source)]
+            ret: list[tuple[Location, Location, float]] = (list(current_path.values()) + [next_edge])[2:]  # type: ignore
+            yield ret
+
+        # 3. Only expand the search through the next node if it makes sense.
+        #
+        # Check if the current cumulative distance (using previous_node) + new_dist is in the range.
+        # Also check if all targets are explored.
+        if new_path_len <= d2 and (targets - current_path.keys() - {next_node}):
+            # Change next_edge to contain the cumulative distance
+            update_edge = next_edge[:-1] + (new_path_len,)
+            current_path[next_node] = update_edge
+            stack.append(iter(get_edges(next_node)))
+            pass

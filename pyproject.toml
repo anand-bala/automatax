@@ -63,6 +63,7 @@ isort = "*"
 mypy = "*"
 ipython = "*"
 pytest = "*"
+graphviz = "*"
 
 # [tool.pixi.feature.cuda11]
 # channels = ["conda-forge", "nvidia"]
