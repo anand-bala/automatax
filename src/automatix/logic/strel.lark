@@ -19,7 +19,7 @@
          | phi
 
 time_interval: "[" [INT] "," [INT] "]"
-distance_interval: "[" [NUMBER] "," NUMBER "]"
+distance_interval: "[" [NUMBER] "," [NUMBER] "]"
 
 identifier: CNAME | ESCAPED_STRING
 constant: "true" | "false"

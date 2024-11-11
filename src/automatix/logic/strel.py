@@ -1,4 +1,5 @@
 import itertools
+import math
 import types
 from abc import ABC
 from dataclasses import dataclass
@@ -78,15 +79,17 @@ class TimeInterval(_Ast):
 @dataclass(eq=True, frozen=True, slots=True)
 class DistanceInterval(_Ast):
     start: Optional[float]
-    end: float
+    end: Optional[float]
 
     def __str__(self) -> str:
         return f"[{self.start or ''}, {self.end}]"
 
     def __post_init__(self) -> None:
+        if self.start is None:
+            object.__setattr__(self, "start", 0.0)
+        if self.end is None:
+            object.__setattr__(self, "end", math.inf)
         match (self.start, self.end):
-            case (None, _):
-                object.__setattr__(self, "start", 0.0)
             case (float(start), float(end)) if start < 0 or end < 0:
                 raise ValueError("Distane cannot be less than 0")
             case (float(start), float(end)) if start >= end:
