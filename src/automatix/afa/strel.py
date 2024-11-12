@@ -1,10 +1,10 @@
 """Transform STREL parse tree to an AFA."""
 
 import math
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Collection, Generic, Iterable, Iterator, Optional, TypeAlias, TypeVar
+from typing import Callable, Collection, Generic, Iterable, Iterator, Mapping, Optional, TypeAlias, TypeVar
 
 import networkx as nx
 
@@ -42,23 +42,42 @@ class StrelAutomaton(AFA[Alph, Q, K]):
 
     def __init__(
         self,
+        initial_expr: strel.Expr,
         transitions: Transitions[K],
         expr_var_map: dict[Q, Poly[K]],
         var_node_map: dict[str, Q],
     ) -> None:
         # assert set(transitions.mapping.keys()) == set(expr_var_map.keys())
         super().__init__(transitions)
+        assert expr_var_map.keys() == transitions.mapping.keys()
+
+        self.initial_expr = initial_expr
         self.expr_var_map = expr_var_map
         self.var_node_map = var_node_map
+        self._manager = next(iter(self.expr_var_map.values()))
 
         def _is_accepting(expr: strel.Expr) -> bool:
             return (
                 isinstance(expr, strel.NotOp)
                 and isinstance(expr.arg, (strel.UntilOp, strel.EventuallyOp))
                 and (expr.arg.interval is None or expr.arg.interval.is_untimed())
-            )
+            ) or expr == self.initial_expr
 
         self.accepting_states = {(expr, loc) for (expr, loc) in transitions.mapping.keys() if _is_accepting(expr)}
+
+    def initial_at(self, loc: Location) -> Poly[K]:
+        """Return the polynomial representation of the initial state"""
+        return self.expr_var_map[(self.initial_expr, loc)]
+
+    @property
+    def final_mapping(self) -> Mapping[str, K]:
+        """Return the weights/labels for the final/accepting states"""
+        return {
+            str((str(phi), loc)): (
+                self._manager.bottom().eval({}) if (phi, loc) not in self.accepting_states else self._manager.top().eval({})
+            )
+            for (phi, loc) in self.states
+        }
 
     @property
     def states(self) -> Collection[Q]:
@@ -86,7 +105,7 @@ class StrelAutomaton(AFA[Alph, Q, K]):
         visitor.visit(phi)
 
         transitions = Transitions(visitor.transitions)
-        aut = cls(transitions, visitor.expr_var_map, visitor.var_node_map)
+        aut = cls(phi, transitions, visitor.expr_var_map, visitor.var_node_map)
 
         return aut
 
