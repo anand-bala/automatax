@@ -4,7 +4,7 @@ import math
 from collections import deque
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Generic, Iterable, Iterator, Optional, TypeAlias, TypeVar
+from typing import Callable, Collection, Generic, Iterable, Iterator, Optional, TypeAlias, TypeVar
 
 import networkx as nx
 
@@ -50,6 +50,19 @@ class StrelAutomaton(AFA[Alph, Q, K]):
         super().__init__(transitions)
         self.expr_var_map = expr_var_map
         self.var_node_map = var_node_map
+
+        def _is_accepting(expr: strel.Expr) -> bool:
+            return (
+                isinstance(expr, strel.NotOp)
+                and isinstance(expr.arg, (strel.UntilOp, strel.EventuallyOp))
+                and (expr.arg.interval is None or expr.arg.interval.is_untimed())
+            )
+
+        self.accepting_states = {(expr, loc) for (expr, loc) in transitions.mapping.keys() if _is_accepting(expr)}
+
+    @property
+    def states(self) -> Collection[Q]:
+        return self.expr_var_map.keys()
 
     def next(self, input: Alph, current: Poly[K]) -> Poly[K]:
         """Get the polynomial after transitions by evaluating the current polynomial with the transition function."""

@@ -47,7 +47,11 @@ class TimeInterval(_Ast):
         return f"[{self.start or ''}, {self.end or ''}]"
 
     def is_unbounded(self) -> bool:
-        return self.end is not None
+        return self.end is None or math.isinf(self.end)
+
+    def is_untimed(self) -> bool:
+        """If the interval is [0, inf]"""
+        return (self.start is None or self.start == 0.0) and (self.end is None or math.isinf(self.end))
 
     def __post_init__(self) -> None:
         match (self.start, self.end):
@@ -66,14 +70,13 @@ class TimeInterval(_Ast):
             If the time interval is unbounded, this will return a generator that goes on forever
         """
         match (self.start, self.end):
-            case (None, None):
-                return iter([])
-            case (start, None):
+            case (int(start), None):
                 return itertools.count(start)
-            case (None, end):
+            case (None, int(end)):
                 return iter(range(0, end + 1))
-            case (start, end):
+            case (int(start), int(end)):
                 return iter(range(start, end + 1))
+        return iter([])
 
 
 @dataclass(eq=True, frozen=True, slots=True)
