@@ -39,6 +39,9 @@ sympy = "~=1.12"
 networkx = "~=3.2"
 lark = "~=1.2"
 
+[tool.pixi.pypi-dependencies]
+automatix = { path = ".", editable = true }
+
 [tool.pixi.host-dependencies]
 pip = "*"
 
@@ -91,6 +94,8 @@ pusher-example = "python ./examples/motion_planning/pusher.py"
 # brax = "*"
 matplotlib = "*"
 scienceplots = "*"
+pydantic = ">=2.9.2,<3"
+scipy = "*"
 
 [tool.pixi.environments]
 default = ["dev"]
@@ -140,7 +145,7 @@ group_by_package = true
 line-length = 127
 
 [tool.pyright]
-include = ["src"]
+include = ["src", "examples"]
 pythonVersion = "3.11"
 pythonPlatform = "All"
 reportUnknownMemberType = false
@@ -149,7 +154,7 @@ reportUnknownVariableType = false
 reportUnknownArgumentType = false
 
 [tool.basedpyright]
-include = ["src"]
+include = ["src", "examples"]
 pythonVersion = "3.11"
 pythonPlatform = "All"
 reportUnknownMemberType = false

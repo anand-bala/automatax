@@ -4,13 +4,22 @@ import math
 from collections import deque
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Collection, Generic, Iterable, Iterator, Mapping, Optional, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Callable, Collection, Generic, Iterable, Iterator, Mapping, Optional, TypeAlias, TypeVar
 
 import networkx as nx
+
+if TYPE_CHECKING:
+    import dd.autoref as bddlib
+else:
+    try:
+        import dd.cudd as bddlib  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        import dd.autoref as bddlib
 
 import automatix.logic.strel as strel
 from automatix.afa.automaton import AFA, AbstractTransition
 from automatix.algebra.abc import AbstractPolynomial
+from automatix.algebra.polynomials.boolean import BooleanPolynomial
 
 K = TypeVar("K")
 
@@ -46,6 +55,28 @@ class Transitions(AbstractTransition[Alph, Q, K]):
                 return self.manager.const(self.label_fn(input, state[1], name))
         fn = self.mapping[state]
         return fn(input)
+
+
+def make_bool_automaton(
+    phi: strel.Expr, label_fn: LabellingFn[bool], max_locs: int, dist_attr: str = "hop"
+) -> "StrelAutomaton":
+    """Make a Boolean/qualitative Alternating Automaton for STREL monitoring.
+
+    **Parameters:**
+
+    - `phi`: STREL expression
+    - `label_fn`: A labelling function that takes as input a graph of signals at each location, a specific location
+      (`int`), and the name of the predicate and outputs the value of the predicate.
+    - `max_locs`: Maximum number of locations in the automaton.
+    - `dist_attr`: The distance attribute over edges in the `nx.Graph`.
+    """
+    return StrelAutomaton.from_strel_expr(
+        phi,
+        label_fn,
+        BooleanPolynomial(bddlib.BDD()),
+        max_locs,
+        dist_attr,
+    )
 
 
 class StrelAutomaton(AFA[Alph, Q, K]):
