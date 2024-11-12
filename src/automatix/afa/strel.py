@@ -1,7 +1,7 @@
 """Transform STREL parse tree to an AFA."""
 
 import math
-from collections import defaultdict, deque
+from collections import deque
 from dataclasses import dataclass
 from functools import partial
 from typing import Callable, Collection, Generic, Iterable, Iterator, Mapping, Optional, TypeAlias, TypeVar
@@ -25,14 +25,25 @@ Q: TypeAlias = tuple[strel.Expr, Location]
 """
 
 Poly: TypeAlias = AbstractPolynomial[K]
+Manager: TypeAlias = Poly[K]
 LabellingFn: TypeAlias = Callable[[Alph, Location, str], K]
 
 
 @dataclass
 class Transitions(AbstractTransition[Alph, Q, K]):
     mapping: dict[Q, Callable[[Alph], Poly[K]]]
+    manager: Manager[K]
+    label_fn: LabellingFn[K]
 
     def __call__(self, input: Alph, state: Q) -> Poly[K]:
+        match state[0]:
+            case strel.Constant(value):
+                if value:
+                    return self.manager.top()
+                else:
+                    return self.manager.bottom()
+            case strel.Identifier(name):
+                return self.manager.const(self.label_fn(input, state[1], name))
         fn = self.mapping[state]
         return fn(input)
 
@@ -104,8 +115,7 @@ class StrelAutomaton(AFA[Alph, Q, K]):
         visitor = _ExprMapper(label_fn, polynomial, max_locs, dist_attr)
         visitor.visit(phi)
 
-        transitions = Transitions(visitor.transitions)
-        aut = cls(phi, transitions, visitor.expr_var_map, visitor.var_node_map)
+        aut = cls(phi, visitor._transitions, visitor.expr_var_map, visitor.var_node_map)
 
         return aut
 
@@ -122,17 +132,17 @@ class _ExprMapper(Generic[K]):
     ) -> None:
         assert max_locs > 0, "STREL graphs should have at least 1 location"
         self.max_locs = max_locs
-        self.label_fn = label_fn
         self.dist_attr = dist_attr or "weight"
-        # Create a const polynomial for tracking nodes
-        self.manager = polynomial
         # Maps the string representation of a subformula to the AFA node
         # This is also the visited states.
         self.expr_var_map: dict[Q, Poly[K]] = dict()
-        # Maps the transition relation
-        self.transitions: dict[Q, Callable[[Alph], Poly[K]]] = dict()
         # Map from the polynomial var string to the state in Q
         self.var_node_map: dict[str, Q] = dict()
+        # Maps the transition relation
+        self._transitions = Transitions(dict(), polynomial, label_fn)
+        self.transitions = self._transitions.mapping
+        # Create a const polynomial for tracking nodes
+        self.manager = self._transitions.manager
 
     def _add_aut_state(self, phi: strel.Expr) -> None:
         # phi_str = str(phi)
@@ -216,7 +226,7 @@ class _ExprMapper(Generic[K]):
                 # Expand as F arg = arg | X F arg
                 self._add_transition(
                     phi,
-                    lambda loc, alph: self.transitions[(phi.arg, loc)](alph) + self.expr_var_map[(phi, loc)],
+                    lambda loc, alph: self._transitions(alph, (phi.arg, loc)) + self.expr_var_map[(phi, loc)],
                 )
             case strel.TimeInterval(0 | None, int(t2)):
                 # phi = F[0, t2] arg
@@ -234,7 +244,7 @@ class _ExprMapper(Generic[K]):
                         sub_expr = phi.arg
                     self._add_transition(
                         expr,
-                        lambda loc, alph, sub_expr=sub_expr: self.transitions[(phi.arg, loc)](alph)
+                        lambda loc, alph, sub_expr=sub_expr: self._transitions(alph, (phi.arg, loc))
                         + self.expr_var_map[(sub_expr, loc)],
                     )
 
@@ -266,8 +276,8 @@ class _ExprMapper(Generic[K]):
                 # Expand as phi = lhs U rhs = rhs | (lhs & X phi)
                 self._add_transition(
                     phi,
-                    lambda loc, alph: self.transitions[(phi.rhs, loc)](alph)
-                    + (self.transitions[(phi.lhs, loc)](alph) * self.expr_var_map[(phi, loc)]),
+                    lambda loc, alph: self._transitions(alph, (phi.rhs, loc))
+                    + (self._transitions(alph, (phi.lhs, loc)) * self.expr_var_map[(phi, loc)]),
                 )
             case strel.TimeInterval(int(t1), None):
                 # phi = lhs U[t1,] rhs = ~F[0,t1] ~(lhs U rhs)
@@ -340,25 +350,13 @@ class _ExprMapper(Generic[K]):
         # 2. Add phi and ~phi as AFA nodes
         # 3. Add the transition for phi and ~phi
         match phi:
-            case strel.Constant(value):
-                self._add_aut_state(phi)
-                # The transition is just the value
-                if value:
-                    self._add_transition(phi, lambda *_: self.manager.top())
-                else:
-                    self._add_transition(phi, lambda *_: self.manager.bottom())
             case strel.Identifier():
-                self._add_aut_state(phi)
-                # The transition is to evaluate it.
-                self._add_transition(
-                    phi,
-                    lambda loc, alph: self.manager.const(self.label_fn(alph, loc, phi.name)),
-                )
+                self._add_transition(phi, lambda loc, alph: self._transitions(alph, (phi, loc)))
             case strel.NotOp(arg):
                 self.visit(arg)
                 self._add_transition(
                     phi,
-                    lambda loc, alph: self.transitions[(arg, loc)](alph).negate(),
+                    lambda loc, alph: self._transitions(alph, (arg, loc)).negate(),
                 )
             case strel.AndOp(lhs, rhs):
                 self.visit(lhs)
@@ -366,7 +364,7 @@ class _ExprMapper(Generic[K]):
                 self._add_aut_state(phi)
                 self._add_transition(
                     phi,
-                    lambda loc, alph: self.transitions[(lhs, loc)](alph) * self.transitions[(rhs, loc)](alph),
+                    lambda loc, alph: self._transitions(alph, (lhs, loc)) * self._transitions(alph, (rhs, loc)),
                 )
             case strel.OrOp(lhs, rhs):
                 self.visit(lhs)
@@ -374,7 +372,7 @@ class _ExprMapper(Generic[K]):
                 self._add_aut_state(phi)
                 self._add_transition(
                     phi,
-                    lambda loc, alph: self.transitions[(lhs, loc)](alph) + self.transitions[(rhs, loc)](alph),
+                    lambda loc, alph: self._transitions(alph, (lhs, loc)) + self._transitions(alph, (rhs, loc)),
                 )
             case strel.EverywhereOp(_, arg):
                 self.visit(arg)
