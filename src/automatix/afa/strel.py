@@ -103,35 +103,42 @@ class _ExprMapper(Generic[K]):
         self.var_node_map: dict[str, Q] = dict()
 
     def _add_aut_state(self, phi: strel.Expr) -> None:
+        # phi_str = str(phi)
+        # not_phi = ~phi
+        # not_phi_str = str(not_phi)
+        # for loc in range(self.max_locs):
+        #     self.expr_var_map.setdefault(
+        #         (phi, loc),
+        #         self.manager.declare(str((phi_str, loc))),
+        #     )
+        #     self.var_node_map.setdefault(str((phi_str, loc)), (phi, loc))
+        #     self.expr_var_map.setdefault(
+        #         (not_phi, loc),
+        #         self.manager.declare(str((not_phi_str, loc))),
+        #     )
+        #     self.var_node_map.setdefault(str((not_phi_str, loc)), (not_phi, loc))
+        pass
+
+    def _add_expr_alias(self, phi: strel.Expr, alias: strel.Expr) -> None:
         phi_str = str(phi)
-        not_phi = ~phi
-        not_phi_str = str(not_phi)
+        # not_phi = ~phi
+        # not_phi_str = str(not_phi)
+        for loc in range(self.max_locs):
+            self.expr_var_map[(phi, loc)] = self.expr_var_map[(alias, loc)]
+            self.transitions[(phi, loc)] = self.transitions[(alias, loc)]
+            self.var_node_map.setdefault(str((phi_str, loc)), (phi, loc))
+            # self.expr_var_map[(~phi, loc)] = self.expr_var_map[(~alias, loc)]
+            # self.transitions[(~phi, loc)] = self.transitions[(~alias, loc)]
+            # self.var_node_map.setdefault(str((not_phi_str, loc)), (not_phi, loc))
+
+    def _add_transition(self, phi: strel.Expr, transition: Callable[[Location, Alph], Poly[K]]) -> None:
+        phi_str = str(phi)
         for loc in range(self.max_locs):
             self.expr_var_map.setdefault(
                 (phi, loc),
                 self.manager.declare(str((phi_str, loc))),
             )
             self.var_node_map.setdefault(str((phi_str, loc)), (phi, loc))
-            self.expr_var_map.setdefault(
-                (not_phi, loc),
-                self.manager.declare(str((not_phi_str, loc))),
-            )
-            self.var_node_map.setdefault(str((not_phi_str, loc)), (not_phi, loc))
-
-    def _add_expr_alias(self, phi: strel.Expr, alias: strel.Expr) -> None:
-        phi_str = str(phi)
-        not_phi = ~phi
-        not_phi_str = str(not_phi)
-        for loc in range(self.max_locs):
-            self.expr_var_map[(phi, loc)] = self.expr_var_map[(alias, loc)]
-            self.transitions[(phi, loc)] = self.transitions[(alias, loc)]
-            self.var_node_map.setdefault(str((phi_str, loc)), (phi, loc))
-            self.expr_var_map[(~phi, loc)] = self.expr_var_map[(~alias, loc)]
-            self.transitions[(phi, loc)] = self.transitions[(alias, loc)]
-            self.var_node_map.setdefault(str((not_phi_str, loc)), (not_phi, loc))
-
-    def _add_transition(self, phi: strel.Expr, transition: Callable[[Location, Alph], Poly[K]]) -> None:
-        for loc in range(self.max_locs):
             self.transitions.setdefault((phi, loc), partial(transition, loc))
 
     def _expand_add_next(self, phi: strel.NextOp) -> None:
@@ -316,7 +323,6 @@ class _ExprMapper(Generic[K]):
                     lambda loc, alph: self.manager.const(self.label_fn(alph, loc, phi.name)),
                 )
             case strel.NotOp(arg):
-                # Just add the argument as the negation will be added implicitely
                 self.visit(arg)
                 self._add_transition(
                     phi,
