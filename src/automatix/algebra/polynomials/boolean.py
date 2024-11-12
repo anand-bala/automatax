@@ -84,9 +84,9 @@ class BooleanPolynomial(AbstractPolynomial[bool]):
     def eval(self, mapping: Mapping[str, bool]) -> bool:
         assert self.support.issubset(mapping.keys())
         evald = self.let(mapping)
-        if evald == self.context.true:
+        if evald.is_top():
             return True
-        elif evald == self.context.false:
+        elif evald.is_bottom():
             return False
         else:
             raise RuntimeError("Evaluated polynomial is not constant, even with full support")
