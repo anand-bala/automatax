@@ -119,6 +119,15 @@ class StrelAutomaton(AFA[Alph, Q, K]):
 
         return aut
 
+    def check_run(self, ego_location: Location, trace: Iterable[Alph]) -> K:
+        """Generate the weight of the trace with respect to the automaton"""
+        state = self.initial_at(ego_location)
+        for input in trace:
+            state = self.next(input, state)
+        final = self.final_mapping
+        ret = state.eval(final)
+        return ret
+
 
 class _ExprMapper(Generic[K]):
     """Post-order visitor for creating transitions"""
