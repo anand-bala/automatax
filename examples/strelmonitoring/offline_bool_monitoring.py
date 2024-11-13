@@ -3,14 +3,16 @@ import csv
 import itertools
 import json
 import math
+import timeit
 from collections import deque
 from pathlib import Path
-from typing import Self, Sequence, TypeAlias
+from typing import MutableSequence, Self, Sequence, TypeAlias
 
 import networkx as nx
 import numpy as np
 from pydantic import BaseModel, Field, model_validator
 
+from automatix.afa.strel import make_bool_automaton
 from automatix.logic import strel
 
 DRONE_COMMS_RADIUS: float = 40
@@ -18,7 +20,7 @@ GCS_COMMS_RADIUS: float = 60
 CLOSE_TO_GOAL_THRESH = 0.5
 CLOSE_TO_OBSTACLE_THRESH = 0.1
 
-Location: TypeAlias = int | str
+Location: TypeAlias = int
 Alph: TypeAlias = "nx.Graph[Location]"
 
 
@@ -34,6 +36,11 @@ class Building(BaseModel):
     x: float = Field(alias="east")
 
 
+class GoalPosition(BaseModel):
+    x: float
+    y: float
+
+
 class MapInfo(BaseModel):
     num_blocks: int = Field(alias="nb_blocks")
     street_width_perc: float
@@ -46,6 +53,7 @@ class Map(BaseModel):
     map_properties: MapInfo
     buildings: list[Building]
     ground_stations: list[GroundStation]
+    goal_position: GoalPosition = Field(alias="goal_positions")
 
 
 class TraceSample(BaseModel):
@@ -63,20 +71,32 @@ class Args(BaseModel):
     map_info: Path = Field(description="Path to map.json file", alias="map")
     trace: Path = Field(description="Path to trace.csv file")
 
+    ego_loc: list[str] = Field(
+        description="Names of the ego location. Format is '(drone|groundstation)_(0i)', where `i` is the index. Default: all locations",
+        default_factory=list,
+        alias="ego",
+    )
+    timeit: bool = Field(description="Record performance", default=False)
+    forward_run: bool = Field(description="To the forward method", default=True)
+
     @classmethod
     def parse(cls) -> "Args":
         parser = argparse.ArgumentParser(
-            description="Run offline monitoring example", formatter_class=argparse.ArgumentDefaultsHelpFormatter
+            description="Run offline monitoring example",
         )
-        for name, field in cls.model_fields.items():
-            ty = field.annotation or str
-            parser.add_argument(
-                f"--{field.alias or name}",
-                help=field.description,
-                type=lambda arg, ty=ty: ty(arg),
-                required=field.is_required(),
-            )
-            # print(f"{field.alias or name:10s} {field.annotation} {field.description} {field.is_required()}")
+        parser.add_argument(
+            "--spec", help="Path to a file with a STREL specification (python file)", type=lambda arg: Path(arg), required=True
+        )
+        parser.add_argument("--map", help="Path to map.json file", type=lambda arg: Path(arg), required=True)
+        parser.add_argument("--trace", help="Path to trace.csv file", required=True)
+        parser.add_argument(
+            "--ego",
+            help="Name of the ego location. Format is '(drone|groundstation)_(0i)', where `i` is the index. Default: all locations",
+            action="append",
+            required=False,
+        )
+        parser.add_argument("--timeit", help="Record performance", action="store_true")
+        # parser.add_argument("--forward", help="Record performance", action="store_true")
 
         args = parser.parse_args()
         return Args(**vars(args))
@@ -108,8 +128,8 @@ def read_spec_file(spec_file: Path) -> tuple[strel.Expr, str]:
 
 
 def _get_distance_to_obstacle(
-    trace: list[tuple[float, "nx.Graph[Location]"]], map_info: Map
-) -> list[tuple[float, "nx.Graph[Location]"]]:
+    trace: MutableSequence[tuple[float, "nx.Graph[str]"]], map_info: Map
+) -> MutableSequence[tuple[float, "nx.Graph[str]"]]:
     """Iterate over the graphs and, to each drone location, add a "dist_to_obstacle" parameter"""
     from scipy.spatial.distance import cdist
 
@@ -122,31 +142,31 @@ def _get_distance_to_obstacle(
     obstacle_radius = map_info.map_properties.building_width
 
     for _, sample in trace:
-        # Unpack drone locations
-        drone_centers, drone_ids = zip(
+        # Unpack locations
+        loc_centers, loc_ids = zip(
             *[
                 ((dr_data["pos_x"], dr_data["pos_y"]), dr)
                 for dr, dr_data in sample.nodes(data=True)
                 if dr_data["kind"] == "drone"
             ]
         )
-        drone_centers = np.array(drone_centers)
-        drone_ids = list(drone_ids)
-        assert drone_centers.shape == (len(drone_centers), 2)
+        loc_centers = np.array(loc_centers)
+        loc_ids = list(loc_ids)
+        assert loc_centers.shape == (len(loc_centers), 2)
 
         # Compute distance to obstacles
-        dist_to_each_obstacle = cdist(drone_centers, obstacle_centers, "euclidean")
-        assert dist_to_each_obstacle.shape == (len(drone_ids), len(obstacle_ids))
+        dist_to_each_obstacle = cdist(loc_centers, obstacle_centers, "euclidean")
+        assert dist_to_each_obstacle.shape == (len(loc_ids), len(obstacle_ids))
         # Compute min dist to obstacles (along each row)
         # Subtract the radius and max by 0
         min_dist_to_obstacle = np.maximum(
             np.absolute((np.amin(dist_to_each_obstacle, axis=1) - obstacle_radius)),
             np.array(0.0),
         )
-        assert min_dist_to_obstacle.shape == (len(drone_ids),)
+        assert min_dist_to_obstacle.shape == (len(loc_ids),)
 
-        # For each drone, add the dist_to_obstacle attribute
-        for i, dr in enumerate(drone_ids):
+        # For each location, add the dist_to_obstacle attribute
+        for i, dr in enumerate(loc_ids):
             sample.nodes[dr]["dist_to_obstacle"] = min_dist_to_obstacle[i]
     return trace
 
@@ -158,10 +178,22 @@ def read_trace(trace_file: Path, map_info: Map) -> Sequence[tuple[float, nx.Grap
         reader = csv.DictReader(f)
         raw_trace = [TraceSample.model_validate(row) for row in reader]
 
+    goal_pos = np.array([map_info.goal_position.x, map_info.goal_position.y], dtype=np.float64)
+
     # Convert the map info GCSs into a graph too
     gcs_graph: "nx.Graph[str]" = nx.Graph()
     for gcs in map_info.ground_stations:
-        gcs_graph.add_node(f"gcs_{gcs.id:02d}", kind="groundstation", pos_x=gcs.x, pos_y=gcs.y)
+        # Compute distance to goal.
+        gcs_pos = np.array([gcs.x, gcs.y])
+        dist_sq = np.sum(np.square(goal_pos - gcs_pos))
+        gcs_graph.add_node(
+            f"gcs_{gcs.id:02d}",
+            kind="groundstation",
+            pos_x=gcs.x,
+            pos_y=gcs.y,
+            dist_to_goal=np.sqrt(dist_sq),
+            dist_to_obstacle=0.0,
+        )
 
     for d1, d2 in itertools.combinations(gcs_graph.nodes, 2):
         x1, y1 = gcs_graph.nodes[d1]["pos_x"], gcs_graph.nodes[d1]["pos_y"]
@@ -186,8 +218,15 @@ def read_trace(trace_file: Path, map_info: Map) -> Sequence[tuple[float, nx.Grap
             pass
         # Add current row to last graph
         g = trace[-1][1]
+        # Compute distance to goal.
+        drone_pos = np.array([sample.pos_x, sample.pos_y])
+        dist_sq = np.sum(np.square(goal_pos - drone_pos))
         g.add_node(
-            f"drone_{sample.drone:02d}", kind="drone", **sample.model_dump(include={"pos_x", "pos_y", "vel_x", "vel_y"})
+            f"drone_{sample.drone:02d}",
+            kind="drone",
+            pos_x=sample.pos_x,
+            pos_y=sample.pos_y,
+            dist_to_goal=np.sqrt(dist_sq),
         )
 
     # Add an edge between drones if they are within communication distance.
@@ -231,11 +270,81 @@ def assign_bool_labels(input: Alph, loc: Location, pred: str) -> bool:  # noqa: 
 
 
 def main(args: Args) -> None:
-    # Read the mapinfo file
+    print("================================================================================")
+    print(
+        """
+WARNING:
+    Longer traces will take time to run due to pre-calculations needed to make
+    the dynamic graphs. This does not measure the actual time it takes to
+    monitor things (which will be timed and reported).
+
+"""
+    )
+    spec, dist_attr = read_spec_file(args.spec_file)
+    print(f"phi = {str(spec)}")
+    print()
     with open(args.map_info, "r") as f:
         map_info = Map.model_validate(json.load(f))
     trace = list(read_trace(args.trace, map_info))
+    print(f"Trace Length  = {len(trace)}")
+    print()
+    max_locs = max([g.number_of_nodes() for _, g in trace])
+    print(f"Num Locations = {max_locs}")
+
     trace = _get_distance_to_obstacle(trace, map_info)
+    # Remove timestamps from trace, and relabel the traces with integer nodes
+    remapping = {name: i for i, name in enumerate(trace[0][1].nodes)}
+    new_trace: list["nx.Graph[int]"] = [nx.relabel_nodes(g, remapping) for _, g in trace]  # type: ignore
+    assert len(new_trace) == len(trace)
+    assert isinstance(new_trace[0], nx.Graph)
+
+    monitor = make_bool_automaton(
+        spec,
+        assign_bool_labels,
+        max_locs,
+        dist_attr,
+    )
+    final_mapping = monitor.final_mapping
+
+    def forward_run() -> dict[str, bool]:
+        states = {name: monitor.initial_at(loc) for name, loc in remapping.items()}
+        for input in new_trace:
+            states = {name: monitor.next(input, state) for name, state in states.items()}
+        return {name: state.eval(final_mapping) for name, state in states.items()}
+
+    if len(args.ego_loc) > 0:
+        for ego_loc in map(lambda e: remapping[e], args.ego_loc):
+            if args.timeit:
+                print("Logging time taken to monitor trace.")
+                timer = timeit.Timer(lambda ego_loc=ego_loc: monitor.check_run(ego_loc, new_trace), "gc.enable()")
+                n_loops, time_taken = timer.autorange()
+                print(f"Ran monitoring code {n_loops} times. Took {time_taken} ns")
+            else:
+                print(f"Begin monitoring trace for ego location: {args.ego_loc}")
+                start_time = timeit.default_timer()
+                check = monitor.check_run(ego_loc, new_trace)
+                end_time = timeit.default_timer()
+                print(f"Completed monitoring in: \t\t{end_time - start_time} nanoseconds")
+                print()
+                print(f"\tphi @ {args.ego_loc} = {check}")
+
+    else:
+        if args.timeit:
+            print("Logging time taken to monitor trace.")
+            timer = timeit.Timer(forward_run, "gc.enable()")
+            n_loops, time_taken = timer.autorange()
+            print(f"Ran monitoring code {n_loops} times. Took {time_taken} ns")
+        else:
+            print("Begin monitoring trace")
+            start_time = timeit.default_timer()
+            check = forward_run()
+            end_time = timeit.default_timer()
+            print(f"Completed monitoring in: \t\t{end_time - start_time} nanoseconds")
+            print()
+            for name, sat in check.items():
+                print(f"\tphi @ {name} = {sat}")
+
+    print("================================================================================")
 
 
 if __name__ == "__main__":
