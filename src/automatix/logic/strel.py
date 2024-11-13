@@ -3,7 +3,6 @@ import math
 import types
 from abc import ABC
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Iterator, Optional, Self
 
@@ -132,7 +131,10 @@ class NotOp(Expr):
 
     @override
     def expand_intervals(self) -> "Expr":
-        return NotOp(self.arg.expand_intervals())
+        arg = self.arg.expand_intervals()
+        if isinstance(arg, NotOp):
+            return arg
+        return NotOp(arg)
 
 
 @dataclass(eq=True, frozen=True, slots=True)
@@ -363,7 +365,6 @@ class _TransformTerminals(Transformer):
         return x
 
 
-@lru_cache(maxsize=1)
 def get_parser() -> Lark:
     with open(STREL_GRAMMAR_FILE, "r") as grammar:
         return Lark(
@@ -373,7 +374,6 @@ def get_parser() -> Lark:
         )
 
 
-@lru_cache(maxsize=1)
 def _to_ast_transformer() -> Transformer:
     ast = types.ModuleType("ast")
     for c in itertools.chain(

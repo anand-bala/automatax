@@ -162,7 +162,7 @@ class StrelAutomaton(AFA[Alph, Q, K]):
 
         return aut
 
-    def check_run(self, ego_location: Location, trace: Iterable[Alph], *, reverse_order: bool = True) -> K:
+    def check_run(self, ego_location: Location, trace: Iterable[Alph], *, reverse_order: bool = False) -> K:
         """Generate the weight of the trace with respect to the automaton"""
         trace = list(trace)
         if reverse_order:
@@ -229,11 +229,6 @@ class _ExprMapper(Generic[K]):
             steps = 1
         else:
             steps = phi.steps
-        # print(f"{steps=}")
-        # Expand the formula into nested nexts
-        for i in range(steps, 0, -1):
-            # print(f"{i=}")
-            expr: strel.Expr = strel.NextOp(i, phi.arg)
 
         for i in range(steps, 1, -1):
             # print(f"{i=}")
@@ -350,9 +345,9 @@ class _ExprMapper(Generic[K]):
                 path = [loc] + [e[1] for e in edge_path]
                 # print(f"{path=}")
                 # Path expr checks if last node satisfies rhs and all others satisfy lhs
-                path_expr = self._get_var((phi.rhs, path[-1]))
+                path_expr = self._transitions(input, (phi.rhs, path[-1]))
                 for l_p in reversed(path[:-1]):
-                    path_expr *= self._get_var((phi.lhs, l_p))
+                    path_expr *= self._transitions(input, (phi.lhs, l_p))
                 expr += path_expr
                 # Break early if TOP/True
                 if expr.is_top():

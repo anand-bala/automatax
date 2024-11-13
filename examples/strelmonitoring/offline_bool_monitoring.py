@@ -3,6 +3,8 @@ import csv
 import itertools
 import json
 import math
+import os
+import sys
 import timeit
 from collections import deque
 from pathlib import Path
@@ -93,7 +95,7 @@ class Args(BaseModel):
             "--ego",
             help="Name of the ego location. Format is '(drone|groundstation)_(0i)', where `i` is the index. Default: all locations",
             action="append",
-            required=False,
+            default=argparse.SUPPRESS,
         )
         parser.add_argument("--timeit", help="Record performance", action="store_true")
         # parser.add_argument("--forward", help="Record performance", action="store_true")
@@ -270,16 +272,17 @@ def assign_bool_labels(input: Alph, loc: Location, pred: str) -> bool:  # noqa: 
 
 
 def main(args: Args) -> None:
-    print("================================================================================")
-    print(
-        """
-WARNING:
-    Longer traces will take time to run due to pre-calculations needed to make
-    the dynamic graphs. This does not measure the actual time it takes to
-    monitor things (which will be timed and reported).
+    from time import perf_counter_ns
 
-"""
-    )
+    print("================================================================================")
+    # print(
+    #     """
+    # WARNING:
+    # Longer traces will take time to run due to pre-calculations needed to make
+    # the dynamic graphs. This does not measure the actual time it takes to
+    # monitor things (which will be timed and reported).
+    # """
+    # )
     spec, dist_attr = read_spec_file(args.spec_file)
     print(f"phi = {str(spec)}")
     print()
@@ -287,7 +290,6 @@ WARNING:
         map_info = Map.model_validate(json.load(f))
     trace = list(read_trace(args.trace, map_info))
     print(f"Trace Length  = {len(trace)}")
-    print()
     max_locs = max([g.number_of_nodes() for _, g in trace])
     print(f"Num Locations = {max_locs}")
 
@@ -318,13 +320,14 @@ WARNING:
                 print("Logging time taken to monitor trace.")
                 timer = timeit.Timer(lambda ego_loc=ego_loc: monitor.check_run(ego_loc, new_trace), "gc.enable()")
                 n_loops, time_taken = timer.autorange()
-                print(f"Ran monitoring code {n_loops} times. Took {time_taken} ns")
+                print(f"Ran monitoring code {n_loops} times. Took {time_taken} seconds")
             else:
                 print(f"Begin monitoring trace for ego location: {args.ego_loc}")
-                start_time = timeit.default_timer()
+                start_time = perf_counter_ns()
                 check = monitor.check_run(ego_loc, new_trace)
-                end_time = timeit.default_timer()
-                print(f"Completed monitoring in: \t\t{end_time - start_time} nanoseconds")
+                end_time = perf_counter_ns()
+                t_delta = (end_time - start_time) * 10e-9
+                print(f"Completed monitoring in: \t\t{t_delta:.6e} seconds")
                 print()
                 print(f"\tphi @ {args.ego_loc} = {check}")
 
@@ -333,18 +336,24 @@ WARNING:
             print("Logging time taken to monitor trace.")
             timer = timeit.Timer(forward_run, "gc.enable()")
             n_loops, time_taken = timer.autorange()
-            print(f"Ran monitoring code {n_loops} times. Took {time_taken} ns")
+            print(f"Ran monitoring code {n_loops} times. Took {time_taken} seconds")
         else:
             print("Begin monitoring trace")
-            start_time = timeit.default_timer()
+            start_time = perf_counter_ns()
             check = forward_run()
-            end_time = timeit.default_timer()
-            print(f"Completed monitoring in: \t\t{end_time - start_time} nanoseconds")
+            end_time = perf_counter_ns()
+            t_delta = (end_time - start_time) * 10e-9
+            print(f"Completed monitoring in: \t\t{t_delta:.6e} seconds")
             print()
             for name, sat in check.items():
                 print(f"\tphi @ {name} = {sat}")
 
     print("================================================================================")
+    original_stderr = sys.stderr
+    original_stdout = sys.stdout
+    devnull = open(os.devnull, "w")
+    sys.stdout = devnull
+    sys.stderr = devnull
 
 
 if __name__ == "__main__":

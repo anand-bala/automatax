@@ -61,11 +61,11 @@ class BooleanPolynomial(AbstractPolynomial[bool]):
 
     @override
     def is_top(self) -> bool:
-        return self._expr == self.context.false
+        return self._expr == self.context.true
 
     @override
     def is_bottom(self) -> bool:
-        return self._expr == self.context.true
+        return self._expr == self.context.false
 
     @override
     def const(self, value: bool) -> "BooleanPolynomial":
