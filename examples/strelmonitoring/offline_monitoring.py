@@ -84,7 +84,7 @@ class Args(BaseModel):
     @classmethod
     def parse(cls) -> "Args":
         parser = argparse.ArgumentParser(
-            description="Run offline monitoring example",
+            description="Run boolean monitoring example",
         )
         parser.add_argument(
             "--spec", help="Path to a file with a STREL specification (python file)", type=lambda arg: Path(arg), required=True
@@ -307,46 +307,70 @@ def main(args: Args) -> None:
         dist_attr,
     )
     final_mapping = monitor.final_mapping
+    ego_locs = {ego: remapping[ego] for ego in args.ego_loc}
+    if len(ego_locs) == 0:
+        ego_locs = remapping
 
     def forward_run() -> dict[str, bool]:
-        states = {name: monitor.initial_at(loc) for name, loc in remapping.items()}
+        states = {name: monitor.initial_at(loc) for name, loc in ego_locs.items()}
         for input in new_trace:
             states = {name: monitor.next(input, state) for name, state in states.items()}
         return {name: state.eval(final_mapping) for name, state in states.items()}
 
-    if len(args.ego_loc) > 0:
-        for ego_loc in map(lambda e: remapping[e], args.ego_loc):
-            if args.timeit:
-                print("Logging time taken to monitor trace.")
-                timer = timeit.Timer(lambda ego_loc=ego_loc: monitor.check_run(ego_loc, new_trace), "gc.enable()")
-                n_loops, time_taken = timer.autorange()
-                print(f"Ran monitoring code {n_loops} times. Took {time_taken} seconds")
-            else:
-                print(f"Begin monitoring trace for ego location: {args.ego_loc}")
-                start_time = perf_counter_ns()
-                check = monitor.check_run(ego_loc, new_trace)
-                end_time = perf_counter_ns()
-                t_delta = (end_time - start_time) * 10e-9
-                print(f"Completed monitoring in: \t\t{t_delta:.6e} seconds")
-                print()
-                print(f"\tphi @ {args.ego_loc} = {check}")
+    def autorange(timer: timeit.Timer, max_repeat_duration: float):
+        i = 1
+        while True:
+            for j in 1, 2, 5:
+                number = i * j
+                time_taken = timer.timeit(number)
+                if time_taken >= max_repeat_duration:
+                    return (number, time_taken)
+            i *= 10
 
+    if args.timeit:
+        n_repeats = 5
+        print(
+            f"""
+Logging monitoring performance.
+
+In the output, there are three fields. 
+
+* The loop count, which is number of times the trace was monitored per timing loop repition
+* The repetition count (‘best of 5’) which tells you how many times the timing loop was repeated
+* Time the monitoring took on average within the best repetition of the timing loop. That is, the time the fastest repetition took divided by the loop count.
+
+Monitoring for ego locations: {list(ego_locs.keys())}
+
+
+"""
+        )
+        timer = timeit.Timer(forward_run, "gc.enable()")
+        results = [0.0] * n_repeats
+        max_repeat_duration = 10.0
+        max_loops_per_repeat = None
+        for i in range(n_repeats):
+            if max_loops_per_repeat is None:
+                # determine best time
+                loops, time_taken = autorange(timer, max_repeat_duration)
+                results[i] = time_taken / loops
+                max_loops_per_repeat = loops
+            else:
+                assert max_loops_per_repeat > 0
+                time_taken = timer.timeit(number=max_loops_per_repeat)
+                results[i] = time_taken / max_loops_per_repeat
+
+        best_time = min(results)
+        print(f"==> {max_loops_per_repeat} monitoring runs, best of {n_repeats}: {best_time} sec per run")
     else:
-        if args.timeit:
-            print("Logging time taken to monitor trace.")
-            timer = timeit.Timer(forward_run, "gc.enable()")
-            n_loops, time_taken = timer.autorange()
-            print(f"Ran monitoring code {n_loops} times. Took {time_taken} seconds")
-        else:
-            print("Begin monitoring trace")
-            start_time = perf_counter_ns()
-            check = forward_run()
-            end_time = perf_counter_ns()
-            t_delta = (end_time - start_time) * 10e-9
-            print(f"Completed monitoring in: \t\t{t_delta:.6e} seconds")
-            print()
-            for name, sat in check.items():
-                print(f"\tphi @ {name} = {sat}")
+        print("Begin monitoring trace")
+        start_time = perf_counter_ns()
+        check = forward_run()
+        end_time = perf_counter_ns()
+        t_delta = (end_time - start_time) * 10e-9
+        print(f"Completed monitoring in: \t\t{t_delta:.6e} seconds")
+        print()
+        for name, sat in check.items():
+            print(f"\tphi @ {name} = {sat}")
 
     print("================================================================================")
     original_stderr = sys.stderr
