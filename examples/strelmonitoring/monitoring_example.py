@@ -8,13 +8,14 @@ import sys
 import timeit
 from collections import deque
 from pathlib import Path
-from typing import MutableSequence, Self, Sequence, TypeAlias
+from time import perf_counter_ns
+from typing import Mapping, MutableSequence, Self, Sequence, TypeAlias
 
 import networkx as nx
 import numpy as np
 from pydantic import BaseModel, Field, model_validator
 
-from automatix.afa.strel import make_bool_automaton
+from automatix.afa.strel import StrelAutomaton, make_bool_automaton
 from automatix.logic import strel
 
 DRONE_COMMS_RADIUS: float = 40
@@ -79,7 +80,7 @@ class Args(BaseModel):
         alias="ego",
     )
     timeit: bool = Field(description="Record performance", default=False)
-    forward_run: bool = Field(description="To the forward method", default=True)
+    online: bool = Field(description="Report online monitoring performance", default=False)
 
     @classmethod
     def parse(cls) -> "Args":
@@ -90,7 +91,7 @@ class Args(BaseModel):
             "--spec", help="Path to a file with a STREL specification (python file)", type=lambda arg: Path(arg), required=True
         )
         parser.add_argument("--map", help="Path to map.json file", type=lambda arg: Path(arg), required=True)
-        parser.add_argument("--trace", help="Path to trace.csv file", required=True)
+        parser.add_argument("--trace", help="Path to trace.csv file", type=lambda arg: Path(arg), required=True)
         parser.add_argument(
             "--ego",
             help="Name of the ego location. Format is '(drone|groundstation)_(0i)', where `i` is the index. Default: all locations",
@@ -98,9 +99,12 @@ class Args(BaseModel):
             default=argparse.SUPPRESS,
         )
         parser.add_argument("--timeit", help="Record performance", action="store_true")
-        # parser.add_argument("--forward", help="Record performance", action="store_true")
+        parser.add_argument("--online", help="Record online monitoring performance", action="store_true")
 
         args = parser.parse_args()
+        assert args.spec.is_file(), "Specification file doesn't exist"
+        assert args.map.is_file(), "Map file doesn't exist"
+        assert args.trace.is_file(), "Trace file doesn't exist"
         return Args(**vars(args))
 
     @model_validator(mode="after")
@@ -271,8 +275,139 @@ def assign_bool_labels(input: Alph, loc: Location, pred: str) -> bool:  # noqa: 
     return ret
 
 
+def autorange(timer: timeit.Timer, max_repeat_duration: float) -> tuple[int, float]:
+    i = 1
+    while True:
+        for j in 1, 2, 5:
+            number = i * j
+            time_taken = timer.timeit(number)
+            if time_taken >= max_repeat_duration:
+                return (number, time_taken)
+        i *= 10
+
+
+def online_monitoring(
+    args: Args,
+    monitor: StrelAutomaton,
+    trace: Sequence["nx.Graph[Location]"],
+    ego_locs: Mapping[str, int],
+    final_mapping: Mapping[str, bool],
+) -> None:
+    if args.timeit:
+        print(
+            f"""
+Logging online monitoring performance.
+
+In the output, there are three fields for each ego location. 
+
+* The trace length.
+* The repetition count (‘best of 5’) which tells you how many times the trace was monitored.
+* The time monitoring took on average per step on within the best repetition. That is, the average per step performance for the best trace performance.
+
+Finally, the average best per step time is reported across all ego locations
+
+NOTE: You should probably just run this for a type of location (drones only or groundstation only)
+
+Monitoring for ego locations: {list(ego_locs.keys())}
+
+
+"""
+        )
+        overall_results = []
+        num_repeat = 50
+        for ego, ego_loc in ego_locs.items():
+            timer = timeit.Timer(
+                lambda ego=ego, ego_loc=ego_loc: forward_run(monitor, trace, {ego: ego_loc}, final_mapping), "gc.enable()"
+            )
+            results = timer.repeat(repeat=num_repeat, number=1)
+            step_results = map(lambda res: res / len(trace), results)
+            best_time = min(step_results)
+            overall_results.append(best_time)
+            print(
+                f"phi @ {ego:15s} ==> best of {num_repeat} monitoring runs on trace of length {len(trace)}: {best_time:.6e} sec per step"
+            )
+
+        print()
+        print(f"==> Overall best: {sum(overall_results)/len(overall_results):.6e} sec per step")
+    else:
+        print("Begin monitoring trace")
+        start_time = perf_counter_ns()
+        check = forward_run(monitor, trace, ego_locs, final_mapping)
+        end_time = perf_counter_ns()
+        t_delta = (end_time - start_time) * 10e-9
+        print(f"Completed monitoring in: \t\t{t_delta:.6e} seconds")
+        print(f"Average per step time: \t\t{t_delta/len(trace)} seconds")
+        print()
+        for name, sat in check.items():
+            print(f"\tphi @ {name} = {sat}")
+
+
+def forward_run(
+    monitor: StrelAutomaton,
+    trace: Sequence["nx.Graph[Location]"],
+    ego_locs: Mapping[str, int],
+    final_mapping: Mapping[str, bool],
+) -> dict[str, bool]:
+    states = {name: monitor.initial_at(loc) for name, loc in ego_locs.items()}
+    for input in trace:
+        states = {name: monitor.next(input, state) for name, state in states.items()}
+    return {name: state.eval(final_mapping) for name, state in states.items()}
+
+
+def offline_monitoring(
+    args: Args,
+    monitor: StrelAutomaton,
+    trace: Sequence["nx.Graph[Location]"],
+    ego_locs: Mapping[str, int],
+    final_mapping: Mapping[str, bool],
+) -> None:
+    if args.timeit:
+        n_repeats = 5
+        print(
+            f"""
+Logging offline monitoring performance.
+
+In the output, there are three fields. 
+
+* The loop count, which is number of times the trace was monitored per timing loop repition
+* The repetition count (‘best of 5’) which tells you how many times the timing loop was repeated
+* Time the monitoring took on average within the best repetition of the timing loop. That is, the time the fastest repetition took divided by the loop count.
+
+Monitoring for ego locations: {list(ego_locs.keys())}
+
+
+"""
+        )
+        timer = timeit.Timer(lambda: forward_run(monitor, trace, ego_locs, final_mapping), "gc.enable()")
+        results = [0.0] * n_repeats
+        max_repeat_duration = 10.0
+        max_loops_per_repeat = None
+        for i in range(n_repeats):
+            if max_loops_per_repeat is None:
+                # determine best time
+                loops, time_taken = autorange(timer, max_repeat_duration)
+                results[i] = time_taken / loops
+                max_loops_per_repeat = loops
+            else:
+                assert max_loops_per_repeat > 0
+                time_taken = timer.timeit(number=max_loops_per_repeat)
+                results[i] = time_taken / max_loops_per_repeat
+
+        best_time = min(results)
+        print(f"==> {max_loops_per_repeat} monitoring runs, best of {n_repeats}: {best_time} sec per run")
+    else:
+        print("Begin monitoring trace")
+        start_time = perf_counter_ns()
+        check = forward_run(monitor, trace, ego_locs, final_mapping)
+        end_time = perf_counter_ns()
+        t_delta = (end_time - start_time) * 10e-9
+        print(f"Completed monitoring in: \t\t{t_delta:.6e} seconds")
+        print()
+        for name, sat in check.items():
+            print(f"\tphi @ {name} = {sat}")
+
+
 def main(args: Args) -> None:
-    from time import perf_counter_ns
 
     print("================================================================================")
     # print(
@@ -311,70 +446,15 @@ def main(args: Args) -> None:
     if len(ego_locs) == 0:
         ego_locs = remapping
 
-    def forward_run() -> dict[str, bool]:
-        states = {name: monitor.initial_at(loc) for name, loc in ego_locs.items()}
-        for input in new_trace:
-            states = {name: monitor.next(input, state) for name, state in states.items()}
-        return {name: state.eval(final_mapping) for name, state in states.items()}
-
-    def autorange(timer: timeit.Timer, max_repeat_duration: float):
-        i = 1
-        while True:
-            for j in 1, 2, 5:
-                number = i * j
-                time_taken = timer.timeit(number)
-                if time_taken >= max_repeat_duration:
-                    return (number, time_taken)
-            i *= 10
-
-    if args.timeit:
-        n_repeats = 5
-        print(
-            f"""
-Logging monitoring performance.
-
-In the output, there are three fields. 
-
-* The loop count, which is number of times the trace was monitored per timing loop repition
-* The repetition count (‘best of 5’) which tells you how many times the timing loop was repeated
-* Time the monitoring took on average within the best repetition of the timing loop. That is, the time the fastest repetition took divided by the loop count.
-
-Monitoring for ego locations: {list(ego_locs.keys())}
-
-
-"""
-        )
-        timer = timeit.Timer(forward_run, "gc.enable()")
-        results = [0.0] * n_repeats
-        max_repeat_duration = 10.0
-        max_loops_per_repeat = None
-        for i in range(n_repeats):
-            if max_loops_per_repeat is None:
-                # determine best time
-                loops, time_taken = autorange(timer, max_repeat_duration)
-                results[i] = time_taken / loops
-                max_loops_per_repeat = loops
-            else:
-                assert max_loops_per_repeat > 0
-                time_taken = timer.timeit(number=max_loops_per_repeat)
-                results[i] = time_taken / max_loops_per_repeat
-
-        best_time = min(results)
-        print(f"==> {max_loops_per_repeat} monitoring runs, best of {n_repeats}: {best_time} sec per run")
+    if args.online:
+        online_monitoring(args, monitor, new_trace, ego_locs, final_mapping)
     else:
-        print("Begin monitoring trace")
-        start_time = perf_counter_ns()
-        check = forward_run()
-        end_time = perf_counter_ns()
-        t_delta = (end_time - start_time) * 10e-9
-        print(f"Completed monitoring in: \t\t{t_delta:.6e} seconds")
-        print()
-        for name, sat in check.items():
-            print(f"\tphi @ {name} = {sat}")
+        offline_monitoring(args, monitor, new_trace, ego_locs, final_mapping)
 
     print("================================================================================")
-    original_stderr = sys.stderr
-    original_stdout = sys.stdout
+    # dd.BDD prints a bunch of errors because of refcounting errors, but we don't care coz the OS will take care of that.
+    # original_stderr = sys.stderr
+    # original_stdout = sys.stdout
     devnull = open(os.devnull, "w")
     sys.stdout = devnull
     sys.stderr = devnull

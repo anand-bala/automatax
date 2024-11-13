@@ -3,11 +3,13 @@
 To run the example for offline monitoring with Boolean semantics, run:
 
 ```bash
-python ./offline_monitoring.py \
-    --spec ./reach_avoid_spec.py \
-    --map ./sample_traj_data/Map_1/whole_run/param_map_1.json \
-    --trace ./sample_traj_data/Map_1/whole_run/param_map_1_log_2024_11_12_14_09_20.csv \
-    --ego "drone_03" \ # Skip to monitor from all locations, or specify multiple times.
+python ./monitoring_example.py \
+    --spec "<spec_file>.py" \
+    --map "<map_file>.json" \
+    --trace "<trace_file>.csv" \
+    # --ego "drone_03" \ # Skip to monitor from all locations, or specify multiple times. \
+    # --timeit # Do rigorous profiling \
+    # --online # Do online monitoring \
 ```
 
 
