@@ -80,12 +80,15 @@ class Args(BaseModel):
         alias="ego",
     )
     timeit: bool = Field(description="Record performance", default=False)
+    trial_timeout: float = Field(description="Approximate max number of seconds to run each trial.", default=10.0)
+    num_trials: int = Field(description="Number of timing trials to run.", default=5)
     online: bool = Field(description="Report online monitoring performance", default=False)
 
     @classmethod
     def parse(cls) -> "Args":
         parser = argparse.ArgumentParser(
             description="Run boolean monitoring example",
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         )
         parser.add_argument(
             "--spec", help="Path to a file with a STREL specification (python file)", type=lambda arg: Path(arg), required=True
@@ -98,13 +101,18 @@ class Args(BaseModel):
             action="append",
             default=argparse.SUPPRESS,
         )
-        parser.add_argument("--timeit", help="Record performance", action="store_true")
         parser.add_argument("--online", help="Record online monitoring performance", action="store_true")
+        parser.add_argument("--timeit", help="Record performance", action="store_true")
+        parser.add_argument(
+            "--trial-timeout", help="Approximate max number of seconds to run each trial", type=float, default=10.0
+        )
+        parser.add_argument("--num-trials", help="Number of timing trials to run", default=5, type=int)
 
         args = parser.parse_args()
         assert args.spec.is_file(), "Specification file doesn't exist"
         assert args.map.is_file(), "Map file doesn't exist"
         assert args.trace.is_file(), "Trace file doesn't exist"
+        assert args.trial_timeout > 0, "Can't have timeout <= 0"
         return Args(**vars(args))
 
     @model_validator(mode="after")
@@ -314,7 +322,7 @@ Monitoring for ego locations: {list(ego_locs.keys())}
 """
         )
         overall_results = []
-        num_repeat = 50
+        num_repeat = args.num_trials
         for ego, ego_loc in ego_locs.items():
             timer = timeit.Timer(
                 lambda ego=ego, ego_loc=ego_loc: forward_run(monitor, trace, {ego: ego_loc}, final_mapping), "gc.enable()"
@@ -362,7 +370,7 @@ def offline_monitoring(
     final_mapping: Mapping[str, bool],
 ) -> None:
     if args.timeit:
-        n_repeats = 5
+        n_repeats = args.num_trials
         print(
             f"""
 Logging offline monitoring performance.
@@ -380,7 +388,7 @@ Monitoring for ego locations: {list(ego_locs.keys())}
         )
         timer = timeit.Timer(lambda: forward_run(monitor, trace, ego_locs, final_mapping), "gc.enable()")
         results = [0.0] * n_repeats
-        max_repeat_duration = 10.0
+        max_repeat_duration = args.trial_timeout
         max_loops_per_repeat = None
         for i in range(n_repeats):
             if max_loops_per_repeat is None:
@@ -418,6 +426,13 @@ def main(args: Args) -> None:
     # monitor things (which will be timed and reported).
     # """
     # )
+    print(f"Reading specification from: {str(args.spec_file)}")
+    print(f"Reading map from: {str(args.map_info)}")
+    print(f"Reading trace from: {str(args.trace)}")
+    if args.timeit:
+        print(f"Performing {args.num_trials} trials with approx {args.trial_timeout} seconds timeout each")
+    print()
+
     spec, dist_attr = read_spec_file(args.spec_file)
     print(f"phi = {str(spec)}")
     print()
