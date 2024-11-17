@@ -1,6 +1,6 @@
 # Monitoring with STREL Automata
 
-To run the example for offline monitoring with Boolean semantics, run:
+To run an example trace, run:
 
 ```bash
 python ./monitoring_example.py \
@@ -12,83 +12,20 @@ python ./monitoring_example.py \
     # --online # Do online monitoring \
 ```
 
+* The files, `./establish_comms_spec.py` and `./reach_avoid_spec.py` , are specification
+files (can be used to substitute the `<spec_file>.py` field above.
 
-<!-- The maps go in parameters. --> 
-<!-- The create_shifted_buildings go in graphics/graphics_map. -->
-<!--  'example_oltafi_saber.m' is the main file. Create a logs directory. -->
-
-
-# Commands for both specs for maps 1-5
-
----------------------Map 1-------------------------
-
-python ./monitoring_example.py \
-    --spec "establish_comms_spec.py" \
-    --map "sample_traj_data/Map_1/whole_run/param_map_1.json" \
-    --trace "sample_traj_data/Map_1/whole_run/param_map_1_log_2024_11_12_14_09_20.csv" \
-     --timeit 
-
-python ./monitoring_example.py \
-    --spec "reach_avoid_spec.py" \
-    --map "sample_traj_data/Map_1/whole_run/param_map_1.json" \
-    --trace "sample_traj_data/Map_1/whole_run/param_map_1_log_2024_11_12_14_09_20.csv" \
-     --timeit 
-
----------------------Map 2-------------------------
+* Directories `./sample_traj_data/` contain the map files (named `param_map_<num>.json`)
+  and trace files (CSV files under each directory).
 
 
-python ./monitoring_example.py \
-    --spec "establish_comms_spec.py" \
-    --map "sample_traj_data/Map_2/whole_run/param_map_2.json" \
-    --trace "sample_traj_data/Map_2/whole_run/param_map_2_log_2024_11_12_13_53_21.csv" \
-     --timeit   
-     
-python ./monitoring_example.py \
-    --spec "reach_avoid_spec.py" \
-    --map "sample_traj_data/Map_2/whole_run/param_map_2.json" \
-    --trace "sample_traj_data/Map_2/whole_run/param_map_2_log_2024_11_12_13_53_21.csv" \
-     --timeit 
+## Generating more traces
 
----------------------Map 3-------------------------
+The code in `./swarmlab/` is used to generate trajectories. The main file is
+`./swarmlab/example_simulation.m`, which can be edited to point to various maps and
+drone configurations (see the bottom of the file). Each map file is one of the
+`param_map_<num>.m`, which can be edited to make new maps.
 
-
-python ./monitoring_example.py \
-    --spec "establish_comms_spec.py" \
-    --map "sample_traj_data/Map_3/run_2/param_map_3_2024_11_12_17_51_14.json" \
-    --trace "sample_traj_data/Map_3/run_2/param_map_3_log_2024_11_12_17_52_42.csv" \
-     --timeit 
-
-python ./monitoring_example.py \
-    --spec "reach_avoid_spec.py" \
-    --map "sample_traj_data/Map_3/run_2/param_map_3_2024_11_12_17_51_14.json" \
-    --trace "sample_traj_data/Map_3/run_2/param_map_3_log_2024_11_12_17_52_42.csv" \
-     --timeit 
-
----------------------Map 4-------------------------
-
-python ./monitoring_example.py \
-    --spec "establish_comms_spec.py" \
-    --map "sample_traj_data/Map_4/param_map_4_2024_11_12_16_54_01.json" \
-    --trace "sample_traj_data/Map_4/param_map_4_log_2024_11_12_16_54_58.csv" \
-     --timeit 
-
-python ./monitoring_example.py \
-    --spec "reach_avoid_spec.py" \
-    --map "sample_traj_data/Map_4/param_map_4_2024_11_12_16_54_01.json" \
-    --trace "sample_traj_data/Map_4/param_map_4_log_2024_11_12_16_54_58.csv" \
-     --timeit 
-
-
----------------------Map 5-------------------------
-
-python ./monitoring_example.py \
-    --spec "establish_comms_spec.py" \
-    --map "sample_traj_data/Map_5/run_1/param_map_5_2024_11_12_17_09_33.json" \
-    --trace "sample_traj_data/Map_5/run_1/param_map_5_log_2024_11_12_17_10_39.csv" \
-     --timeit 
-
-python ./monitoring_example.py \
-    --spec "reach_avoid_spec.py" \
-    --map "sample_traj_data/Map_5/run_1/param_map_5_2024_11_12_17_09_33.json" \
-    --trace "sample_traj_data/Map_5/run_1/param_map_5_log_2024_11_12_17_10_39.csv" \
-     --timeit 
+Before running the simulations, ensure that you have MATLAB installed and the
+[Swarmlab](https://github.com/lis-epfl/swarmlab) package added in the [MATLAB search
+path](https://www.mathworks.com/help/matlab/search-path.html).

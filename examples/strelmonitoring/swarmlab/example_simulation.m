@@ -224,6 +224,7 @@ end
     disp('Simulation completed successfully');
 end
 
+close all;
 % Example call with specific parameters
 nb_agents = 2;
 initial_positions = [0, 0, 0; 0, 50, 0]';
