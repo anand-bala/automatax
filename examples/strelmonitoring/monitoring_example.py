@@ -1,4 +1,5 @@
 import argparse
+import cProfile
 import csv
 import itertools
 import json
@@ -83,6 +84,7 @@ class Args(BaseModel):
     trial_timeout: float = Field(description="Approximate max number of seconds to run each trial.", default=10.0)
     num_trials: int = Field(description="Number of timing trials to run.", default=5)
     online: bool = Field(description="Report online monitoring performance", default=False)
+    profile: bool = Field(description="Profile the monitoring code", default=False)
 
     @classmethod
     def parse(cls) -> "Args":
@@ -102,11 +104,13 @@ class Args(BaseModel):
             default=argparse.SUPPRESS,
         )
         parser.add_argument("--online", help="Record online monitoring performance", action="store_true")
-        parser.add_argument("--timeit", help="Record performance", action="store_true")
         parser.add_argument(
             "--trial-timeout", help="Approximate max number of seconds to run each trial", type=float, default=10.0
         )
         parser.add_argument("--num-trials", help="Number of timing trials to run", default=5, type=int)
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument("--timeit", help="Record performance", action="store_true")
+        group.add_argument("--profile", help="Profile the monitoring code", action="store_true")
 
         args = parser.parse_args()
         assert args.spec.is_file(), "Specification file doesn't exist"
@@ -410,6 +414,19 @@ Monitoring for ego locations: {list(ego_locs.keys())}
             print(f"\tphi @ {name} = {sat}")
 
 
+def profile_monitoring(
+    args: Args,
+    monitor: StrelAutomaton,
+    trace: Sequence["nx.Graph[Location]"],
+    ego_locs: Mapping[str, int],
+) -> None:
+    with cProfile.Profile() as pr:
+        for _ in range(args.num_trials):
+            forward_run(monitor, trace, ego_locs)
+        pr.print_stats()
+        pr.dump_stats(str(Path(__file__).with_suffix(".prof")))
+
+
 def main(args: Args) -> None:
 
     print("================================================================================")
@@ -454,10 +471,13 @@ def main(args: Args) -> None:
     if len(ego_locs) == 0:
         ego_locs = remapping
 
-    if args.online:
-        online_monitoring(args, monitor, new_trace, ego_locs)
+    if args.profile:
+        profile_monitoring(args, monitor, new_trace, ego_locs)
     else:
-        offline_monitoring(args, monitor, new_trace, ego_locs)
+        if args.online:
+            online_monitoring(args, monitor, new_trace, ego_locs)
+        else:
+            offline_monitoring(args, monitor, new_trace, ego_locs)
 
     print("================================================================================")
     # dd.BDD prints a bunch of errors because of refcounting errors, but we don't care coz the OS will take care of that.
