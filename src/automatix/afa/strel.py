@@ -1,10 +1,10 @@
 """Transform STREL parse tree to an AFA."""
 
+import functools
 import math
 from collections import deque
 from dataclasses import dataclass, field
-from functools import partial
-from typing import TYPE_CHECKING, Callable, Collection, Generic, Iterable, Iterator, Mapping, Optional, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Callable, Collection, Iterable, Iterator, Mapping, TypeAlias, TypeVar
 
 import networkx as nx
 
@@ -42,23 +42,72 @@ LabellingFn: TypeAlias = Callable[[Alph, Location, str], K]
 class Transitions(AbstractTransition[Alph, Q, K]):
     manager: Manager[K]
     label_fn: LabellingFn[K]
-    transitions: dict[Q, Callable[[Alph], Poly[K]]] = field(default_factory=dict)
+    dist_attr: str
     const_mapping: dict[Q, Poly[K]] = field(default_factory=dict)
+    var_node_map: dict[str, Q] = field(default_factory=dict)
     aliases: dict[strel.Expr, strel.Expr] = field(default_factory=dict)
 
     def __call__(self, input: Alph, state: Q) -> Poly[K]:
         if state[0] in self.aliases:
             state = (self.aliases[state[0]], state[1])
-        match state[0]:
+        expr, loc = state
+        # If expr is temporal, the visitor should add the argument variables to the const_mapping dict
+        match expr:
             case strel.Constant(value):
                 if value:
                     return self.manager.top()
                 else:
                     return self.manager.bottom()
             case strel.Identifier(name):
-                return self.manager.const(self.label_fn(input, state[1], name))
-        fn = self.transitions[state]
-        return fn(input)
+                return self.manager.const(self.label_fn(input, loc, name))
+            case strel.NotOp(arg):
+                return self(input, (arg, loc)).negate()
+            case strel.AndOp(lhs, rhs):
+                return self(input, (lhs, loc)) * self(input, (rhs, loc))
+            case strel.OrOp(lhs, rhs):
+                return self(input, (lhs, loc)) + self(input, (rhs, loc))
+            case strel.EverywhereOp(interval, arg):
+                alias = ~strel.SomewhereOp(interval, ~arg)
+                self._add_expr_alias(expr, alias)
+                return self(input, (alias, loc))
+            case strel.SomewhereOp(interval, arg):
+                alias = strel.ReachOp(strel.true, interval, arg)
+                self._add_expr_alias(expr, alias)
+                return self(input, (alias, loc))
+            case strel.EscapeOp():
+                return self._expand_escape(input, expr, loc)
+            case strel.ReachOp():
+                return self._expand_reach(input, expr, loc)
+            case strel.NextOp(steps, arg):
+                if steps is not None and steps > 1:
+                    # If steps > 1, we return the variable for X[steps - 1] arg
+                    return self.var((strel.NextOp(steps - 1, arg), loc))
+                else:
+                    assert steps is None or steps == 1
+                    # Otherwise, return the variable for arg
+                    return self.var((arg, loc))
+            case strel.GloballyOp(interval, arg):
+                # Create an alias to ~F[a,b] ~arg
+                alias = ~strel.EventuallyOp(interval, ~arg)
+                self._add_expr_alias(expr, alias)
+                return self(input, (alias, loc))
+            case strel.EventuallyOp():
+                return self._expand_eventually(input, expr, loc)
+            case strel.UntilOp():
+                return self._expand_until(input, expr, loc)
+            case e:
+                raise TypeError(f"Unknown expression type {type(e)}")
+
+    def var(self, state: Q) -> Poly[K]:
+        """Get polynomial variable for the given state, adding a new one if needed"""
+        try:
+            return self.get_var(state)
+        except KeyError:
+            # add the variable because it isn't already added
+            pass
+        self.const_mapping[state] = self.manager.declare(_make_q_str(state))
+        self.var_node_map[_make_q_str(state)] = state
+        return self.const_mapping[state]
 
     def get_var(self, state: Q) -> Poly[K]:
         if state[0] in self.aliases:
@@ -70,10 +119,134 @@ class Transitions(AbstractTransition[Alph, Q, K]):
                 return self.manager.bottom()
         return self.const_mapping[state]
 
+    def _add_expr_alias(self, phi: strel.Expr, alias: strel.Expr) -> None:
+        self.aliases.setdefault(phi, alias)
 
-def make_bool_automaton(
-    phi: strel.Expr, label_fn: LabellingFn[bool], max_locs: int, dist_attr: str = "hop"
-) -> "StrelAutomaton[bool]":
+    def _expand_reach(self, input: Alph, phi: strel.ReachOp, loc: Location) -> Poly[K]:
+        d1 = phi.interval.start or 0.0
+        d2 = phi.interval.end or math.inf
+        # use a modified version of networkx's all_simple_paths algorithm to generate all simple paths
+        # constrained by the distance intervals.
+        # Then, make the symbolic expressions for each path, with the terminal one being for the rhs
+        expr = self.manager.bottom()
+        for edge_path in _all_bounded_simple_paths(input, loc, d1, d2, self.dist_attr):
+            path = [loc] + [e[1] for e in edge_path]
+            # print(f"{path=}")
+            # Path expr checks if last node satisfies rhs and all others satisfy lhs
+            path_expr = self(input, (phi.rhs, path[-1]))
+            for l_p in reversed(path[:-1]):
+                path_expr *= self(input, (phi.lhs, l_p))
+            expr += path_expr
+            # Break early if TOP/True
+            if expr.is_top():
+                return expr
+        return expr
+
+    def _expand_escape(self, input: Alph, phi: strel.EscapeOp, loc: Location) -> Poly[K]:
+        def delta(expr: strel.Expr, loc: Location) -> Poly[K]:
+            return self(input, (expr, loc))
+
+        d1 = phi.interval.start or 0.0
+        d2 = phi.interval.end or math.inf
+
+        # get a list of target locations that meet the distance constraint
+        shortest_lengths: Mapping[Location, int] = nx.shortest_path_length(input, source=loc, weight=None)
+        assert isinstance(shortest_lengths, Mapping)
+        targets = {d for d, dist in shortest_lengths.items() if d1 <= dist <= d2}
+        # Make the symbolic expressions for each path, with the terminal one being for the rhs
+        expr = self.manager.bottom()
+        for path in nx.all_simple_paths(input, source=loc, target=targets):  # type: ignore
+            # print(f"{path=}")
+            # Path expr checks if all locations satisfy arg
+            init = delta(phi.arg, path[0])
+            expr = functools.reduce(lambda acc, loc: acc * delta(phi.arg, loc), path, init)
+            # Break early if TOP/True
+            if expr.is_top():
+                return expr
+        return expr
+
+    def _expand_eventually(self, input: Alph, phi: strel.EventuallyOp, loc: Location) -> Poly[K]:
+        # F[a,b] phi = X X ... X (phi | X (phi | X( ... | X f)))
+        #              ^^^^^^^^^        ^^^^^^^^^^^^^^^^^^^^^^^
+        #               a times                 b-a times
+        #            = X[a] (phi | X (phi | X( ... | X f)))
+        #                          ^^^^^^^^^^^^^^^^^^^^^^^
+        #                                  b-a times
+        def delta(expr: strel.Expr) -> Poly[K]:
+            return self(input, (expr, loc))
+
+        if phi.interval is None:
+            start, end = 0, None
+        else:
+            start, end = phi.interval.start or 0, phi.interval.end
+
+        match (start, end):
+            case (0, None):
+                # phi = F arg
+                # Expand as F arg = arg | X F arg
+                return delta(phi.arg) + self.var((phi, loc))
+            case (0, int(t2)):
+                # phi = F[0, t2] arg
+                # Expand as F[0, t2] arg = arg | X F[0, t2-1] arg
+                if t2 > 1:
+                    next_step = strel.EventuallyOp(strel.TimeInterval(0, t2 - 1), phi.arg)
+                else:
+                    next_step = phi.arg
+                return delta(phi.arg) + self.var((next_step, loc))
+
+            case (int(t1), None):
+                # phi = F[t1,] arg = X[t1] F arg
+                expr: strel.Expr = strel.NextOp(t1, strel.EventuallyOp(None, phi.arg))
+                self._add_expr_alias(phi, expr)
+                return delta(expr)
+
+            case (int(t1), int(t2)):
+                # phi = F[t1, t2] arg = X[t1] F[0, t2 - t1] arg
+                expr: strel.Expr = strel.NextOp(
+                    t1,
+                    strel.EventuallyOp(
+                        strel.TimeInterval(0, t2 - t1),
+                        phi.arg,
+                    ),
+                )
+                self._add_expr_alias(phi, expr)
+                return delta(expr)
+
+    def _expand_until(self, input: Alph, phi: strel.UntilOp, loc: Location) -> Poly[K]:
+        # lhs U[t1,t2] rhs = (F[t1,t2] rhs) & (lhs U[t1,] rhs)
+        # lhs U[t1,  ] rhs = ~F[0,t1] ~(lhs U rhs)
+        def delta(expr: strel.Expr) -> Poly[K]:
+            return self(input, (expr, loc))
+
+        if phi.interval is None:
+            start, end = 0, None
+        else:
+            start, end = phi.interval.start or 0, phi.interval.end
+
+        match (start, end):
+            case (0, None):
+                # phi = lhs U rhs
+                # Expand as phi = lhs U rhs = rhs | (lhs & X phi)
+                return delta(phi.rhs) + (delta(phi.lhs) * self.var((phi, loc)))
+            case (t1, None):
+                # phi = lhs U[t1,] rhs = ~F[0,t1] ~(lhs U rhs)
+                expr: strel.Expr = ~strel.EventuallyOp(
+                    strel.TimeInterval(0, t1),
+                    ~strel.UntilOp(phi.lhs, None, phi.rhs),
+                )
+                self._add_expr_alias(phi, expr)
+            case (t1, int()):
+                # phi = lhs U[t1,t2] rhs = (F[t1,t2] rhs) & (lhs U[t1,] rhs)
+                expr: strel.Expr = strel.EventuallyOp(phi.interval, phi.rhs) & strel.UntilOp(
+                    interval=strel.TimeInterval(t1, None),
+                    lhs=phi.lhs,
+                    rhs=phi.rhs,
+                )
+        self._add_expr_alias(phi, expr)
+        return delta(expr)
+
+
+def make_bool_automaton(phi: strel.Expr, label_fn: LabellingFn[bool], dist_attr: str = "hop") -> "StrelAutomaton[bool]":
     """Make a Boolean/qualitative Alternating Automaton for STREL monitoring.
 
     **Parameters:**
@@ -88,7 +261,6 @@ def make_bool_automaton(
         phi,
         label_fn,
         BooleanPolynomial(bddlib.BDD()),
-        max_locs,
         dist_attr,
     )
 
@@ -100,38 +272,37 @@ class StrelAutomaton(AFA[Alph, Q, K]):
         self,
         initial_expr: strel.Expr,
         transitions: Transitions[K],
-        var_node_map: dict[str, Q],
     ) -> None:
-        assert set(transitions.transitions.keys()) == set(transitions.const_mapping.keys())
         super().__init__(transitions)
 
         self._transitions = transitions
         self.initial_expr = initial_expr
-        self.var_node_map = var_node_map
-        self._manager = next(iter(self._transitions.const_mapping.values()))
+        self.var_node_map = self._transitions.var_node_map
+        self._manager = self._transitions.manager
 
-        def _is_accepting(expr: strel.Expr) -> bool:
-            return (
-                isinstance(expr, strel.NotOp)
-                and isinstance(expr.arg, (strel.UntilOp, strel.EventuallyOp))
-                and (expr.arg.interval is None or expr.arg.interval.is_untimed())
-            ) or expr == self.initial_expr
-
-        self.accepting_states = {(expr, loc) for (expr, loc) in transitions.transitions.keys() if _is_accepting(expr)}
+    def _is_accepting(self, expr: strel.Expr) -> bool:
+        return (
+            isinstance(expr, strel.NotOp)
+            and isinstance(expr.arg, (strel.UntilOp, strel.EventuallyOp))
+            and (expr.arg.interval is None or expr.arg.interval.is_untimed())
+        ) or expr == self.initial_expr
 
     def initial_at(self, loc: Location) -> Poly[K]:
         """Return the polynomial representation of the initial state"""
-        return self._transitions.get_var((self.initial_expr, loc))
+        return self._transitions.var((self.initial_expr, loc))
 
-    @property
-    def final_mapping(self) -> Mapping[str, K]:
-        """Return the weights/labels for the final/accepting states"""
-        return {
-            str((str(phi), loc)): (
-                self._manager.bottom().eval({}) if (phi, loc) not in self.accepting_states else self._manager.top().eval({})
-            )
-            for (phi, loc) in self.states
-        }
+    def final_weight(self, current: Poly[K]) -> K:
+        """Return the final weight given the current state polynomial"""
+        return current.eval(
+            {
+                var: (
+                    self._manager.top().eval({})
+                    if self._is_accepting(self.var_node_map[var][0])
+                    else self._manager.bottom().eval({})
+                )
+                for var in current.support
+            }
+        )
 
     @property
     def states(self) -> Collection[Q]:
@@ -150,291 +321,32 @@ class StrelAutomaton(AFA[Alph, Q, K]):
         phi: strel.Expr,
         label_fn: LabellingFn[K],
         polynomial: Poly[K],
-        max_locs: int,
-        dist_attr: Optional[str] = None,
+        dist_attr: str = "hop",
     ) -> "StrelAutomaton":
         """Convert a STREL expression to an AFA with the given alphabet"""
 
-        visitor = _ExprMapper(label_fn, polynomial, max_locs, dist_attr)
-        visitor.visit(phi)
-
-        aut = cls(phi, visitor._transitions, visitor.var_node_map)
+        aut = cls(
+            phi,
+            Transitions(
+                manager=polynomial,
+                label_fn=label_fn,
+                dist_attr=dist_attr,
+            ),
+        )
 
         return aut
 
-    def check_run(self, ego_location: Location, trace: Iterable[Alph], *, reverse_order: bool = False) -> K:
+    def check_run(self, ego_location: Location, trace: Iterable[Alph]) -> K:
         """Generate the weight of the trace with respect to the automaton"""
         trace = list(trace)
-        if reverse_order:
-            costs = self.final_mapping
-            for input in reversed(trace):
-                new_costs = {_make_q_str(q): self.transitions(input, q).eval(costs) for q in self.states}
-                costs = new_costs
-            ret = self.initial_at(ego_location).eval(costs)
-        else:
-            state = self.initial_at(ego_location)
-            for input in trace:
-                state = self.next(input, state)
-            final = self.final_mapping
-            ret = state.eval(final)
+        state = self.initial_at(ego_location)
+        for input in trace:
+            state = self.next(input, state)
+        ret = self.final_weight(state)
         return ret
 
 
-class _ExprMapper(Generic[K]):
-    """Post-order visitor for creating transitions"""
-
-    def __init__(
-        self,
-        label_fn: LabellingFn[K],
-        polynomial: Poly[K],
-        max_locs: int,
-        dist_attr: Optional[str] = None,
-    ) -> None:
-        assert max_locs > 0, "STREL graphs should have at least 1 location"
-        self.max_locs = max_locs
-        self.dist_attr = dist_attr or "weight"
-
-        self._transitions = Transitions(polynomial, label_fn)
-        # Maps the string representation of a subformula to the AFA node
-        # This is also the visited states.
-        self.expr_var_map = self._transitions.const_mapping
-        # Maps the transition relation
-        self.transitions = self._transitions.transitions
-        # Map from the polynomial var string to the state in Q
-        self.var_node_map: dict[str, Q] = dict()
-        # Create a const polynomial for tracking nodes
-        self.manager = self._transitions.manager
-
-    def _add_expr_alias(self, phi: strel.Expr, alias: strel.Expr) -> None:
-        phi_str = str(phi)
-        for loc in range(self.max_locs):
-            self._transitions.aliases.setdefault(phi, alias)
-            self.var_node_map.setdefault(str((phi_str, loc)), (phi, loc))
-
-    def _add_transition(self, phi: strel.Expr, transition: Callable[[Location, Alph], Poly[K]]) -> None:
-        phi_str = str(phi)
-        for loc in range(self.max_locs):
-            self.expr_var_map.setdefault(
-                (phi, loc),
-                self.manager.declare(str((phi_str, loc))),
-            )
-            self.var_node_map.setdefault(str((phi_str, loc)), (phi, loc))
-            self.transitions.setdefault((phi, loc), partial(transition, loc))
-
-    def _get_var(self, state: Q) -> Poly[K]:
-        return self._transitions.get_var(state)
-
-    def _expand_add_next(self, phi: strel.NextOp) -> None:
-        if phi.steps is None:
-            steps = 1
-        else:
-            steps = phi.steps
-
-        for i in range(steps, 1, -1):
-            # print(f"{i=}")
-            expr = strel.NextOp(i, phi.arg)
-            # Expand as X[t] arg = XX[t - 1] arg
-            sub_expr = strel.NextOp(i - 1, phi.arg)
-            self._add_transition(expr, lambda loc, _, sub_expr=sub_expr: self._get_var((sub_expr, loc)))
-        # Add the final bit where there is no nested next
-        # Expand as X[1] arg = X arg
-        self._add_transition(strel.NextOp(1, phi.arg), lambda loc, _, arg=phi.arg: self._get_var((arg, loc)))
-
-    def _expand_add_globally(self, phi: strel.GloballyOp) -> None:
-        # G[a,b] phi = ~F[a,b] ~phi
-        expr: strel.Expr = ~strel.EventuallyOp(phi.interval, ~phi.arg)
-        self.visit(expr)
-        self._add_expr_alias(phi, expr)
-
-    def _expand_add_eventually(self, phi: strel.EventuallyOp) -> None:
-        # F[a,b] phi = X X ... X (phi | X (phi | X( ... | X f)))
-        #              ^^^^^^^^^        ^^^^^^^^^^^^^^^^^^^^^^^
-        #               a times                 b-a times
-        #            = X[a] (phi | X (phi | X( ... | X f)))
-        #                          ^^^^^^^^^^^^^^^^^^^^^^^
-        #                                  b-a times
-        match phi.interval:
-            case None | strel.TimeInterval(None, None) | strel.TimeInterval(0, None):
-                # phi = F arg
-                # Return as is
-                # Expand as F arg = arg | X F arg
-                self._add_transition(
-                    phi,
-                    lambda loc, alph: self._transitions(alph, (phi.arg, loc)) + self._get_var((phi, loc)),
-                )
-            case strel.TimeInterval(0 | None, int(t2)):
-                # phi = F[0, t2] arg
-                for i in range(t2, 0, -1):
-                    expr: strel.Expr = strel.EventuallyOp(strel.TimeInterval(0, i), phi.arg)
-                for i in range(t2, 0, -1):
-                    expr: strel.Expr = strel.EventuallyOp(strel.TimeInterval(0, i), phi.arg)
-                    sub_expr: strel.Expr  # keeps track of the RHS of the OR operation in the expansion
-                    if i > 1:
-                        # Expand as F[0, t2] arg = arg | X F[0, t2-1] arg
-                        sub_expr = strel.EventuallyOp(strel.TimeInterval(0, i - 1), phi.arg)
-                    else:  # i == 1
-                        # Expand as F[0, 1] arg = arg | X arg
-                        sub_expr = phi.arg
-                    self._add_transition(
-                        expr,
-                        lambda loc, alph, sub_expr=sub_expr: self._transitions(alph, (phi.arg, loc))
-                        + self._get_var((sub_expr, loc)),
-                    )
-
-            case strel.TimeInterval(int(t1), None):
-                # phi = F[t1,] arg = X[t1] F arg
-                expr: strel.Expr = strel.NextOp(t1, strel.EventuallyOp(None, phi.arg))
-                self.visit(expr)
-                self._add_expr_alias(phi, expr)
-
-            case strel.TimeInterval(int(t1), int(t2)):
-                # phi = F[t1, t2] arg = X[t1] F[0, t2 - t1] arg
-                expr: strel.Expr = strel.NextOp(
-                    t1,
-                    strel.EventuallyOp(
-                        strel.TimeInterval(0, t2 - t1),
-                        phi.arg,
-                    ),
-                )
-                self.visit(expr)
-                self._add_expr_alias(phi, expr)
-
-    def _expand_add_until(self, phi: strel.UntilOp) -> None:
-        # lhs U[t1,t2] rhs = (F[t1,t2] rhs) & (lhs U[t1,] rhs)
-        # lhs U[t1,  ] rhs = ~F[0,t1] ~(lhs U rhs)
-        match phi.interval:
-            case None | strel.TimeInterval(0, None) | strel.TimeInterval(None, None):
-                # phi = lhs U rhs
-                # Expand as phi = lhs U rhs = rhs | (lhs & X phi)
-                self._add_transition(
-                    phi,
-                    lambda loc, alph: self._transitions(alph, (phi.rhs, loc))
-                    + (self._transitions(alph, (phi.lhs, loc)) * self._get_var((phi, loc))),
-                )
-            case strel.TimeInterval(int(t1), None):
-                # phi = lhs U[t1,] rhs = ~F[0,t1] ~(lhs U rhs)
-                expr: strel.Expr = ~strel.EventuallyOp(
-                    strel.TimeInterval(0, t1),
-                    ~strel.UntilOp(phi.lhs, None, phi.rhs),
-                )
-                self.visit(expr)
-                self._add_expr_alias(phi, expr)
-            case strel.TimeInterval(int(t1), int()):
-                # phi = lhs U[t1,t2] rhs = (F[t1,t2] rhs) & (lhs U[t1,] rhs)
-                expr: strel.Expr = strel.AndOp(
-                    strel.EventuallyOp(phi.interval, phi.rhs),
-                    strel.UntilOp(
-                        interval=strel.TimeInterval(t1, None),
-                        lhs=phi.lhs,
-                        rhs=phi.rhs,
-                    ),
-                )
-                self.visit(expr)
-                self._add_expr_alias(phi, expr)
-
-    def _expand_add_reach(self, phi: strel.ReachOp) -> None:
-        d1 = phi.interval.start or 0.0
-        d2 = phi.interval.end or math.inf
-
-        def check_reach(loc: Location, input: Alph, d1: float, d2: float, dist_attr: str) -> Poly[K]:
-            # use a modified version of networkx's all_simple_paths algorithm to generate all simple paths
-            # constrained by the distance intervals.
-            # Then, make the symbolic expressions for each path, with the terminal one being for the rhs
-            expr = self.manager.bottom()
-            for edge_path in _all_reach_edge_paths(input, loc, d1, d2, dist_attr):
-                path = [loc] + [e[1] for e in edge_path]
-                # print(f"{path=}")
-                # Path expr checks if last node satisfies rhs and all others satisfy lhs
-                path_expr = self._transitions(input, (phi.rhs, path[-1]))
-                for l_p in reversed(path[:-1]):
-                    path_expr *= self._transitions(input, (phi.lhs, l_p))
-                expr += path_expr
-                # Break early if TOP/True
-                if expr.is_top():
-                    return expr
-            return expr
-
-        self._add_transition(phi, partial(check_reach, d1=d1, d2=d2, dist_attr=self.dist_attr))
-
-    def _expand_add_somewhere(self, phi: strel.SomewhereOp) -> None:
-        # phi = somewhere[d1,d2] arg = true R[d1,d2] arg
-        expr: strel.Expr = strel.ReachOp(strel.true, phi.interval, phi.arg)
-        self.visit(expr)
-        self._add_expr_alias(phi, expr)
-
-    def _expand_add_everywhere(self, phi: strel.EverywhereOp) -> None:
-        # phi = everywhere[d1,d2] arg = ~ somewhere[d1,d2] ~arg
-        expr: strel.Expr = ~strel.SomewhereOp(phi.interval, ~phi.arg)
-        self.visit(expr)
-        self._add_expr_alias(phi, expr)
-
-    def _expand_add_escape(self, phi: strel.EscapeOp) -> None:
-        def instantaneous_escape(loc: Location, input: Alph) -> Poly[K]:
-            pass
-
-        self._add_transition(phi, instantaneous_escape)
-
-    def visit(self, phi: strel.Expr) -> None:
-        # Skip if phi already visited
-        if str(phi) in self.expr_var_map.keys():
-            return
-        # 1. If phi is not a leaf expression visit its Expr children
-        # 2. Add phi and ~phi as AFA nodes
-        # 3. Add the transition for phi and ~phi
-        match phi:
-            case strel.Identifier():
-                self._add_transition(phi, lambda loc, alph: self._transitions(alph, (phi, loc)))
-            case strel.NotOp(arg):
-                self.visit(arg)
-                self._add_transition(
-                    phi,
-                    lambda loc, alph: self._transitions(alph, (arg, loc)).negate(),
-                )
-            case strel.AndOp(lhs, rhs):
-                self.visit(lhs)
-                self.visit(rhs)
-                self._add_transition(
-                    phi,
-                    lambda loc, alph: self._transitions(alph, (lhs, loc)) * self._transitions(alph, (rhs, loc)),
-                )
-            case strel.OrOp(lhs, rhs):
-                self.visit(lhs)
-                self.visit(rhs)
-                self._add_transition(
-                    phi,
-                    lambda loc, alph: self._transitions(alph, (lhs, loc)) + self._transitions(alph, (rhs, loc)),
-                )
-            case strel.EverywhereOp(_, arg):
-                self.visit(arg)
-                self._expand_add_everywhere(phi)
-                raise NotImplementedError()
-            case strel.SomewhereOp(_, arg):
-                self.visit(arg)
-                self._expand_add_somewhere(phi)
-            case strel.EscapeOp(_, arg):
-                self.visit(arg)
-                # self._expand_add_escape(phi)
-                raise NotImplementedError("We currently don't support escape")
-            case strel.ReachOp(lhs, _, rhs):
-                self.visit(lhs)
-                self.visit(rhs)
-                self._expand_add_reach(phi)
-            case strel.NextOp():
-                self.visit(phi.arg)
-                self._expand_add_next(phi)
-            case strel.GloballyOp():
-                self.visit(phi.arg)
-                self._expand_add_globally(phi)
-            case strel.EventuallyOp():
-                self.visit(phi.arg)
-                self._expand_add_eventually(phi)
-            case strel.UntilOp():
-                self.visit(phi.lhs)
-                self.visit(phi.rhs)
-                self._expand_add_until(phi)
-
-
-def _all_reach_edge_paths(
+def _all_bounded_simple_paths(
     graph: Alph, loc: Location, d1: float, d2: float, dist_attr: str
 ) -> Iterator[list[tuple[Location, Location, float]]]:
     """Return all edge paths for reachable nodes. The path lengths are always between `d1` and `d2` (inclusive)"""

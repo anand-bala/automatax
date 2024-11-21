@@ -25,10 +25,10 @@ class Expr(_Ast, ABC):
             case phi:
                 return NotOp(phi)
 
-    def __and__(self, other: Self) -> "AndOp":
+    def __and__(self, other: "Expr") -> "AndOp":
         return AndOp(self, other)
 
-    def __or__(self, other: Self) -> "OrOp":
+    def __or__(self, other: "Expr") -> "OrOp":
         return OrOp(self, other)
 
     def expand_intervals(self) -> "Expr":
@@ -84,7 +84,7 @@ class DistanceInterval(_Ast):
     end: Optional[float]
 
     def __str__(self) -> str:
-        return f"[{self.start or ''}, {self.end}]"
+        return f"[{self.start or 0.0:g}, {self.end or math.inf:g}]"
 
     def __post_init__(self) -> None:
         if self.start is None:

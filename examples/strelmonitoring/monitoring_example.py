@@ -299,7 +299,6 @@ def online_monitoring(
     monitor: StrelAutomaton,
     trace: Sequence["nx.Graph[Location]"],
     ego_locs: Mapping[str, int],
-    final_mapping: Mapping[str, bool],
 ) -> None:
     if args.timeit:
         print(
@@ -324,9 +323,7 @@ Monitoring for ego locations: {list(ego_locs.keys())}
         overall_results = []
         num_repeat = args.num_trials
         for ego, ego_loc in ego_locs.items():
-            timer = timeit.Timer(
-                lambda ego=ego, ego_loc=ego_loc: forward_run(monitor, trace, {ego: ego_loc}, final_mapping), "gc.enable()"
-            )
+            timer = timeit.Timer(lambda ego=ego, ego_loc=ego_loc: forward_run(monitor, trace, {ego: ego_loc}), "gc.enable()")
             results = timer.repeat(repeat=num_repeat, number=1)
             step_results = map(lambda res: res / len(trace), results)
             best_time = min(step_results)
@@ -340,7 +337,7 @@ Monitoring for ego locations: {list(ego_locs.keys())}
     else:
         print("Begin monitoring trace")
         start_time = perf_counter_ns()
-        check = forward_run(monitor, trace, ego_locs, final_mapping)
+        check = forward_run(monitor, trace, ego_locs)
         end_time = perf_counter_ns()
         t_delta = (end_time - start_time) * 10e-9
         print(f"Completed monitoring in: \t\t{t_delta:.6e} seconds")
@@ -354,12 +351,11 @@ def forward_run(
     monitor: StrelAutomaton,
     trace: Sequence["nx.Graph[Location]"],
     ego_locs: Mapping[str, int],
-    final_mapping: Mapping[str, bool],
 ) -> dict[str, bool]:
     states = {name: monitor.initial_at(loc) for name, loc in ego_locs.items()}
     for input in trace:
         states = {name: monitor.next(input, state) for name, state in states.items()}
-    return {name: state.eval(final_mapping) for name, state in states.items()}
+    return {name: monitor.final_weight(state) for name, state in states.items()}
 
 
 def offline_monitoring(
@@ -367,7 +363,6 @@ def offline_monitoring(
     monitor: StrelAutomaton,
     trace: Sequence["nx.Graph[Location]"],
     ego_locs: Mapping[str, int],
-    final_mapping: Mapping[str, bool],
 ) -> None:
     if args.timeit:
         n_repeats = args.num_trials
@@ -386,7 +381,7 @@ Monitoring for ego locations: {list(ego_locs.keys())}
 
 """
         )
-        timer = timeit.Timer(lambda: forward_run(monitor, trace, ego_locs, final_mapping), "gc.enable()")
+        timer = timeit.Timer(lambda: forward_run(monitor, trace, ego_locs), "gc.enable()")
         results = [0.0] * n_repeats
         max_repeat_duration = args.trial_timeout
         max_loops_per_repeat = None
@@ -406,7 +401,7 @@ Monitoring for ego locations: {list(ego_locs.keys())}
     else:
         print("Begin monitoring trace")
         start_time = perf_counter_ns()
-        check = forward_run(monitor, trace, ego_locs, final_mapping)
+        check = forward_run(monitor, trace, ego_locs)
         end_time = perf_counter_ns()
         t_delta = (end_time - start_time) * 10e-9
         print(f"Completed monitoring in: \t\t{t_delta:.6e} seconds")
@@ -453,26 +448,24 @@ def main(args: Args) -> None:
     monitor = make_bool_automaton(
         spec,
         assign_bool_labels,
-        max_locs,
         dist_attr,
     )
-    final_mapping = monitor.final_mapping
     ego_locs = {ego: remapping[ego] for ego in args.ego_loc}
     if len(ego_locs) == 0:
         ego_locs = remapping
 
     if args.online:
-        online_monitoring(args, monitor, new_trace, ego_locs, final_mapping)
+        online_monitoring(args, monitor, new_trace, ego_locs)
     else:
-        offline_monitoring(args, monitor, new_trace, ego_locs, final_mapping)
+        offline_monitoring(args, monitor, new_trace, ego_locs)
 
     print("================================================================================")
     # dd.BDD prints a bunch of errors because of refcounting errors, but we don't care coz the OS will take care of that.
     # original_stderr = sys.stderr
     # original_stdout = sys.stdout
-    devnull = open(os.devnull, "w")
-    sys.stdout = devnull
-    sys.stderr = devnull
+    # devnull = open(os.devnull, "w")
+    # sys.stdout = devnull
+    # sys.stderr = devnull
 
 
 if __name__ == "__main__":
