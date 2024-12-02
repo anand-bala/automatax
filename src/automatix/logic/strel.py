@@ -4,7 +4,7 @@ import types
 from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Optional, Self
+from typing import Iterator, Optional
 
 from lark import Lark, Token, Transformer, ast_utils, v_args
 from typing_extensions import override

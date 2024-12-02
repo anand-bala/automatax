@@ -172,6 +172,7 @@ class Transitions(AbstractTransition[Alph, Q, K]):
         else:
             start, end = phi.interval.start or 0, phi.interval.end
 
+        expr: strel.Expr
         match (start, end):
             case (0, None):
                 # phi = F arg
@@ -180,6 +181,7 @@ class Transitions(AbstractTransition[Alph, Q, K]):
             case (0, int(t2)):
                 # phi = F[0, t2] arg
                 # Expand as F[0, t2] arg = arg | X F[0, t2-1] arg
+                next_step: strel.Expr
                 if t2 > 1:
                     next_step = strel.EventuallyOp(strel.TimeInterval(0, t2 - 1), phi.arg)
                 else:
@@ -188,13 +190,13 @@ class Transitions(AbstractTransition[Alph, Q, K]):
 
             case (int(t1), None):
                 # phi = F[t1,] arg = X[t1] F arg
-                expr: strel.Expr = strel.NextOp(t1, strel.EventuallyOp(None, phi.arg))
+                expr = strel.NextOp(t1, strel.EventuallyOp(None, phi.arg))
                 self._add_expr_alias(phi, expr)
                 return delta(expr)
 
             case (int(t1), int(t2)):
                 # phi = F[t1, t2] arg = X[t1] F[0, t2 - t1] arg
-                expr: strel.Expr = strel.NextOp(
+                expr = strel.NextOp(
                     t1,
                     strel.EventuallyOp(
                         strel.TimeInterval(0, t2 - t1),
@@ -203,6 +205,7 @@ class Transitions(AbstractTransition[Alph, Q, K]):
                 )
                 self._add_expr_alias(phi, expr)
                 return delta(expr)
+        raise RuntimeError(f"Unknown [start, end] interval {(start,end)}")
 
     def _expand_until(self, input: Alph, phi: strel.UntilOp, loc: Location) -> Poly[K]:
         # lhs U[t1,t2] rhs = (F[t1,t2] rhs) & (lhs U[t1,] rhs)
@@ -215,6 +218,7 @@ class Transitions(AbstractTransition[Alph, Q, K]):
         else:
             start, end = phi.interval.start or 0, phi.interval.end
 
+        expr: strel.Expr
         match (start, end):
             case (0, None):
                 # phi = lhs U rhs
@@ -222,14 +226,14 @@ class Transitions(AbstractTransition[Alph, Q, K]):
                 return delta(phi.rhs) + (delta(phi.lhs) * self.var((phi, loc)))
             case (t1, None):
                 # phi = lhs U[t1,] rhs = ~F[0,t1] ~(lhs U rhs)
-                expr: strel.Expr = ~strel.EventuallyOp(
+                expr = ~strel.EventuallyOp(
                     strel.TimeInterval(0, t1),
                     ~strel.UntilOp(phi.lhs, None, phi.rhs),
                 )
                 self._add_expr_alias(phi, expr)
             case (t1, int()):
                 # phi = lhs U[t1,t2] rhs = (F[t1,t2] rhs) & (lhs U[t1,] rhs)
-                expr: strel.Expr = strel.EventuallyOp(phi.interval, phi.rhs) & strel.UntilOp(
+                expr = strel.EventuallyOp(phi.interval, phi.rhs) & strel.UntilOp(
                     interval=strel.TimeInterval(t1, None),
                     lhs=phi.lhs,
                     rhs=phi.rhs,
@@ -252,7 +256,8 @@ def make_bool_automaton(phi: strel.Expr, label_fn: LabellingFn[bool], dist_attr:
     return StrelAutomaton[bool].from_strel_expr(
         phi,
         label_fn,
-        BooleanPolyCtx(),  # type: ignore until HKTs are supported in Python
+        # this doesn't work while HKTs are not supported in Python
+        BooleanPolyCtx(),  # type: ignore
         dist_attr,
     )
 

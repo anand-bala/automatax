@@ -4,8 +4,6 @@ import csv
 import itertools
 import json
 import math
-import os
-import sys
 import timeit
 from collections import deque
 from pathlib import Path
