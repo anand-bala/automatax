@@ -53,13 +53,14 @@ class AbstractPolynomial(ABC, Generic[S]):
         """Return the list of variables with non-zero coefficients in the polynomial"""
         ...
 
+    @property
+    @abstractmethod
+    def context(self) -> "PolynomialManager[Self, S]":
+        """Return the reference to the current polynomial context manager"""
+
     @abstractmethod
     def declare(self, var: str) -> Self:
         """Declare a variable for the polynomial."""
-
-    @abstractmethod
-    def new_zero(self) -> Self:
-        """Return a new constant `0` polynomial"""
 
     @abstractmethod
     def top(self) -> Self:
@@ -120,3 +121,61 @@ class AbstractPolynomial(ABC, Generic[S]):
 
     def __call__(self, mapping: Mapping[str, S | Self]) -> S | Self:
         return self.let(mapping)
+
+
+_Poly = TypeVar("_Poly", bound=AbstractPolynomial)
+
+
+class PolynomialManager(ABC, Generic[_Poly, S]):
+    """Context manager for polynomials.
+
+    This context allows polynomials represented as decision diagrams to share
+    their structure and, thus, minimize the memory footprint of all the polynomials
+    used in the system.
+    """
+
+    @property
+    @abstractmethod
+    def top(self) -> _Poly:
+        """Return the multiplicative identity of the polynomial ring"""
+
+    @property
+    @abstractmethod
+    def bottom(self) -> _Poly:
+        """Return the additive identity of the polynomial ring"""
+
+    @abstractmethod
+    def is_bottom(self, poly: _Poly) -> bool:
+        """Returns `True` if the Polynomial is just the additive identity in the ring."""
+
+    @abstractmethod
+    def is_top(self, poly: _Poly) -> bool:
+        """Returns `True` if the Polynomial is just the multiplicative identity in the ring."""
+
+    @abstractmethod
+    def const(self, value: S) -> _Poly:
+        """Return a constant in the polynomial"""
+
+    @abstractmethod
+    def var(self, name: str) -> _Poly:
+        """Get the monomial for the variable with the given name"""
+
+    @abstractmethod
+    def declare(self, var: str) -> _Poly:
+        """Declare a variable with the given name"""
+
+    @abstractmethod
+    def let(self, poly: _Poly, mapping: Mapping[str, S | _Poly]) -> _Poly:
+        """Substitute variables with constants or other polynomials."""
+
+    @abstractmethod
+    def negate(self, poly: _Poly) -> _Poly:
+        """return the negation of the polynomial"""
+
+    @abstractmethod
+    def add(self, lhs: _Poly, rhs: _Poly) -> _Poly:
+        """Return the addition (with appropriate ring) of two polynomials."""
+
+    @abstractmethod
+    def multiply(self, lhs: _Poly, rhs: _Poly) -> _Poly:
+        """Return the multiplication (with appropriate ring) of two polynomials."""

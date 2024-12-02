@@ -4,22 +4,14 @@ import functools
 import math
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Collection, Iterable, Iterator, Mapping, TypeAlias, TypeVar
+from typing import Callable, Collection, Iterable, Iterator, Mapping, TypeAlias, TypeVar
 
 import networkx as nx
 
-if TYPE_CHECKING:
-    import dd.autoref as bddlib
-else:
-    try:
-        import dd.cudd as bddlib  # pyright: ignore[reportMissingImports]
-    except ImportError:
-        import dd.autoref as bddlib
-
 import automatix.logic.strel as strel
 from automatix.afa.automaton import AFA, AbstractTransition
-from automatix.algebra.abc import AbstractPolynomial
-from automatix.algebra.polynomials.boolean import BooleanPolynomial
+from automatix.algebra.abc import AbstractPolynomial, PolynomialManager
+from automatix.algebra.polynomials.boolean import BooleanPolyCtx
 
 K = TypeVar("K")
 
@@ -34,7 +26,7 @@ Q: TypeAlias = tuple[strel.Expr, Location]
 """
 
 Poly: TypeAlias = AbstractPolynomial[K]
-Manager: TypeAlias = Poly[K]
+Manager: TypeAlias = PolynomialManager[Poly[K], K]
 LabellingFn: TypeAlias = Callable[[Alph, Location, str], K]
 
 
@@ -55,9 +47,9 @@ class Transitions(AbstractTransition[Alph, Q, K]):
         match expr:
             case strel.Constant(value):
                 if value:
-                    return self.manager.top()
+                    return self.manager.top
                 else:
-                    return self.manager.bottom()
+                    return self.manager.bottom
             case strel.Identifier(name):
                 return self.manager.const(self.label_fn(input, loc, name))
             case strel.NotOp(arg):
@@ -114,9 +106,9 @@ class Transitions(AbstractTransition[Alph, Q, K]):
             state = (self.aliases[state[0]], state[1])
         if isinstance(state[0], strel.Constant):
             if state[0].value:
-                return self.manager.top()
+                return self.manager.top
             else:
-                return self.manager.bottom()
+                return self.manager.bottom
         return self.const_mapping[state]
 
     def _add_expr_alias(self, phi: strel.Expr, alias: strel.Expr) -> None:
@@ -128,7 +120,7 @@ class Transitions(AbstractTransition[Alph, Q, K]):
         # use a modified version of networkx's all_simple_paths algorithm to generate all simple paths
         # constrained by the distance intervals.
         # Then, make the symbolic expressions for each path, with the terminal one being for the rhs
-        expr = self.manager.bottom()
+        expr = self.manager.bottom
         for edge_path in _all_bounded_simple_paths(input, loc, d1, d2, self.dist_attr):
             path = [loc] + [e[1] for e in edge_path]
             # print(f"{path=}")
@@ -154,7 +146,7 @@ class Transitions(AbstractTransition[Alph, Q, K]):
         assert isinstance(shortest_lengths, Mapping)
         targets = {d for d, dist in shortest_lengths.items() if d1 <= dist <= d2}
         # Make the symbolic expressions for each path, with the terminal one being for the rhs
-        expr = self.manager.bottom()
+        expr = self.manager.bottom
         for path in nx.all_simple_paths(input, source=loc, target=targets):  # type: ignore
             # print(f"{path=}")
             # Path expr checks if all locations satisfy arg
@@ -257,10 +249,10 @@ def make_bool_automaton(phi: strel.Expr, label_fn: LabellingFn[bool], dist_attr:
     - `max_locs`: Maximum number of locations in the automaton.
     - `dist_attr`: The distance attribute over edges in the `nx.Graph`.
     """
-    return StrelAutomaton.from_strel_expr(
+    return StrelAutomaton[bool].from_strel_expr(
         phi,
         label_fn,
-        BooleanPolynomial(bddlib.BDD()),
+        BooleanPolyCtx(),  # type: ignore until HKTs are supported in Python
         dist_attr,
     )
 
@@ -296,9 +288,9 @@ class StrelAutomaton(AFA[Alph, Q, K]):
         return current.eval(
             {
                 var: (
-                    self._manager.top().eval({})
+                    self._manager.top.eval({})
                     if self._is_accepting(self.var_node_map[var][0])
-                    else self._manager.bottom().eval({})
+                    else self._manager.bottom.eval({})
                 )
                 for var in current.support
             }
@@ -320,7 +312,7 @@ class StrelAutomaton(AFA[Alph, Q, K]):
         cls,
         phi: strel.Expr,
         label_fn: LabellingFn[K],
-        polynomial: Poly[K],
+        manager: Manager[K],
         dist_attr: str = "hop",
     ) -> "StrelAutomaton":
         """Convert a STREL expression to an AFA with the given alphabet"""
@@ -328,7 +320,7 @@ class StrelAutomaton(AFA[Alph, Q, K]):
         aut = cls(
             phi,
             Transitions(
-                manager=polynomial,
+                manager=manager,
                 label_fn=label_fn,
                 dist_attr=dist_attr,
             ),
