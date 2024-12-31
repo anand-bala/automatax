@@ -96,6 +96,9 @@ matplotlib = "*"
 scienceplots = "*"
 pydantic = ">=2.9.2,<3"
 scipy = "*"
+quarto = "*"
+jupyter = ">=1.1.1,<2"
+mkdocs-jupyter = ">=0.25.1,<0.26"
 
 [tool.pixi.environments]
 default = ["dev"]

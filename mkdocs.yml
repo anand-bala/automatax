@@ -1,5 +1,5 @@
-site_name: "Matrix Semirings in JAX"
-site_description: The documentation for using matrix semirings in JAX.
+site_name: "Symbolic (Weighted) Automata"
+site_description: The documentation for using Anand's symbolic weighted automata library.
 site_author: Anand Balakrishnan
 site_url: https://anand-bala.github.io/automatix
 
@@ -12,7 +12,6 @@ theme:
 
 edit_uri: "" # No edit button, as some of our pages are in /docs and some in /examples via symlink, so it's impossible for them all to be accurate
 strict: true # Don't allow warnings during the build process
-
 
 extra_javascript:
   # The below three make MathJax work, see https://squidfunk.github.io/mkdocs-material/reference/mathjax/
@@ -38,6 +37,10 @@ markdown_extensions:
 plugins:
   - search # default search plugin; needs manually re-enabling when using any other plugins
   - autorefs # Cross-links to headings
+  - mkdocs-jupyter:
+      execute: true
+      kernel_name: python3
+      no_input: True
   - mkdocstrings:
       handlers:
         python:
@@ -54,7 +57,8 @@ plugins:
 
 nav:
   - Overview: "index.md"
-  - Semirings: semirings.md
+  - Examples:
+      - Motion Planning:
+          - "examples/motion_planning/pusher.py"
   - API Reference:
-      - automatix: "api/nfa/main.md"
-      - automatix.nfa.semirings: "api/nfa/semirings.md"
+      - automatix.nfa: "api/nfa.md"
