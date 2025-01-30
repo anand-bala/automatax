@@ -21,7 +21,7 @@ fi
 
 info "Using pixi environment: $pixi_env"
 
-eval "$(pixi shell-hook -e "$pixi_env")"
+eval "$(pixi shell-hook --frozen -e "$pixi_env")"
 
 if xhost_cmd="$(type -p "xhost")" && [[ -n "$xhost_cmd" ]]; then
   "$xhost_cmd" +si:localuser:"$(whoami)" >&/dev/null && {

@@ -1,16 +1,17 @@
 from typing import TYPE_CHECKING, Mapping, Self, TypeAlias, final
 
+import dd.autoref as bddlib
 from typing_extensions import override
 
 from automatix.algebra.abc import AbstractPolynomial, PolynomialManager
 
-if TYPE_CHECKING:
-    import dd.autoref as bddlib
-else:
-    try:
-        import dd.cudd as bddlib  # pyright: ignore[reportMissingImports]
-    except ImportError:
-        import dd.autoref as bddlib
+# if TYPE_CHECKING:
+#     import dd.autoref as bddlib
+# else:
+#     try:
+#         import dd.cudd as bddlib  # pyright: ignore[reportMissingImports]
+#     except ImportError:
+#         import dd.autoref as bddlib
 
 _Poly: TypeAlias = "BooleanPolynomial"
 
